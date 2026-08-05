@@ -5,8 +5,12 @@ import { createPortal } from "react-dom";
 import { getTokenList, type SwapToken } from "@/config/tokens";
 import { TokenLogo } from "./TokenLogo";
 import { useTranslation } from "./LanguageProvider";
-import { useTokenBalance } from "@/hooks/useTokenBalance";
-import { formatAmount } from "@/lib/format";
+import {
+  useWalletBalances,
+  useWalletUsdValues,
+} from "@/hooks/useWalletUsdValues";
+import { formatAmount, formatUsd } from "@/lib/format";
+import { formatUnits } from "viem";
 import type { Address } from "@/lib/swap";
 import clsx from "clsx";
 
@@ -58,17 +62,48 @@ export function TokenSelectModal({
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const tokens = useMemo(() => getTokenList(chainId ?? 0), [chainId]);
+  // Balance loads fast (single batch) and renders immediately; the USD
+  // valuation is a slower on-chain pricing pass that streams in afterwards.
+  const { data: balanceMap, isLoading: balanceLoading } = useWalletBalances(
+    chainId,
+    address
+  );
+  const { data: usdMap } = useWalletUsdValues(chainId, address);
 
-  const filtered = useMemo(() => {
+  // Filter by search, then sort. The native (main-chain) coin is pinned to the
+  // top and never sorted. While the on-chain USD valuation is still loading we
+  // sort by raw balance quantity (stable, meaningful); once valuations stream in
+  // we switch to sorting by USD value descending. Tokens with no route (usd ===
+  // null) sink below all valued tokens but keep a balance-based order.
+  const sorted = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return tokens;
-    return tokens.filter(
-      (t) =>
-        t.symbol.toLowerCase().includes(q) ||
-        t.name.toLowerCase().includes(q) ||
-        t.address.toLowerCase().includes(q)
-    );
-  }, [tokens, query]);
+    const list = q
+      ? tokens.filter(
+          (t) =>
+            t.symbol.toLowerCase().includes(q) ||
+            t.name.toLowerCase().includes(q) ||
+            t.address.toLowerCase().includes(q)
+        )
+      : tokens;
+
+    const hasUsd = usdMap != null;
+    const balanceQty = (t: SwapToken) =>
+      Number(formatUnits(balanceMap?.[t.address.toLowerCase()] ?? 0n, t.decimals));
+
+    return [...list].sort((a, b) => {
+      if (a.isNative !== b.isNative) return a.isNative ? -1 : 1;
+      if (!hasUsd) return balanceQty(b) - balanceQty(a); // pre-valuation order
+
+      const ua = usdMap[a.address.toLowerCase()];
+      const ub = usdMap[b.address.toLowerCase()];
+      const ga = ua != null ? 0 : 1; // valued group before unvalued
+      const gb = ub != null ? 0 : 1;
+      if (ga !== gb) return ga - gb;
+      const va = ua != null ? ua : balanceQty(a);
+      const vb = ub != null ? ub : balanceQty(b);
+      return vb - va;
+    });
+  }, [tokens, query, usdMap, balanceMap]);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -103,12 +138,12 @@ export function TokenSelectModal({
           />
         </div>
         <div className="token-select-scroll mt-1 flex-1 overflow-y-auto">
-          {filtered.length === 0 && (
+          {sorted.length === 0 && (
             <p className="py-8 text-center text-sm text-[var(--text-muted)]">
               {t("common.noTokensFound")}
             </p>
           )}
-          {filtered.map((tk) => {
+          {sorted.map((tk) => {
             const isOtherSide =
               !!exclude && tk.address.toLowerCase() === exclude.toLowerCase();
             const isLocked =
@@ -145,8 +180,9 @@ export function TokenSelectModal({
                   {address ? (
                     <TokenBalanceCell
                       token={tk}
-                      account={address}
-                      chainId={chainId}
+                      balance={balanceMap?.[tk.address.toLowerCase()]}
+                      balanceLoading={balanceLoading}
+                      usd={usdMap?.[tk.address.toLowerCase()] ?? null}
                     />
                   ) : null}
                 </div>
@@ -162,24 +198,37 @@ export function TokenSelectModal({
 
 function TokenBalanceCell({
   token,
-  account,
-  chainId,
+  balance,
+  balanceLoading,
+  usd,
 }: {
   token: SwapToken;
-  account: Address;
-  chainId: number | undefined;
+  balance?: bigint;
+  balanceLoading: boolean;
+  /** USD value, or null when no on-chain route to a stable exists. */
+  usd: number | null;
 }) {
-  const { data, isLoading } = useTokenBalance(token, account, chainId);
-
-  if (isLoading) {
+  // Only the balance gets a spinner — show it as soon as it's queried.
+  if (balanceLoading) {
     return (
       <Spinner className="ml-auto block h-4 w-4 text-[var(--text-muted)]" />
     );
   }
 
+  // USD streams in separately and only renders when it's a meaningful amount
+  // (> 0 and at least 1 cent). 0 or no-route ("—") shows nothing but the balance.
+  const showUsd = usd != null && usd >= 0.01;
+
   return (
-    <span className="block text-right text-sm tabular-nums text-[var(--text-muted)]">
-      {data != null ? formatAmount(data, token.decimals) : "0"}
-    </span>
+    <div className="text-right leading-tight">
+      <div className="text-sm tabular-nums text-[var(--text-muted)]">
+        {formatAmount(balance ?? 0n, token.decimals)}
+      </div>
+      {showUsd && (
+        <div className="text-xs tabular-nums text-[var(--text-muted)] opacity-70">
+          {formatUsd(usd)}
+        </div>
+      )}
+    </div>
   );
 }

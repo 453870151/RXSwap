@@ -2,13 +2,35 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
-import { getTokenList, getTokenByAddress, type SwapToken } from "@/config/tokens";
-import { getFactoryAddresses } from "@/config/contracts";
+import { getTokenList, getTokenByAddress, getNativeToken, type SwapToken } from "@/config/tokens";
+import { getFactoryAddresses, WNATIVE } from "@/config/contracts";
 import { FACTORY_ABI } from "@/config/abis/factory";
 import { PAIR_ABI } from "@/config/abis/pair";
 import type { Address } from "@/lib/swap";
 
 const ZERO = "0x0000000000000000000000000000000000000000" as Address;
+
+/**
+ * On-chain, native liquidity lives in a WNATIVE pair (the router wraps BNB on
+ * add). The token list represents the native asset with a zero-address
+ * placeholder, so we must translate it to the real wrapped-native contract when
+ * asking the factory for a pair — otherwise every "BNB + X" LP is missed.
+ */
+function pairAddress(token: SwapToken, chainId: number): Address {
+  return token.isNative ? WNATIVE[chainId] : token.address;
+}
+
+/**
+ * Map a pair's token0/token1 address back into a display token. Treats the
+ * wrapped-native contract as the native asset so WBNB-based pairs render as BNB.
+ */
+function resolveToken(chainId: number, address: Address): SwapToken | undefined {
+  const wnative = WNATIVE[chainId];
+  if (address.toLowerCase() === wnative.toLowerCase()) {
+    return getNativeToken(chainId);
+  }
+  return getTokenByAddress(chainId, address);
+}
 
 export interface LiquidityPosition {
   pair: Address;
@@ -64,7 +86,7 @@ export function useLiquidityPositions(
               address: factory,
               abi: FACTORY_ABI,
               functionName: "getPair",
-              args: [a.address, b.address],
+              args: [pairAddress(a, chainId), pairAddress(b, chainId)],
             })
             .catch(() => ZERO)
         )
@@ -123,8 +145,8 @@ export function useLiquidityPositions(
               }),
             ]);
             const [reserve0, reserve1] = reserves as [bigint, bigint, number];
-            const tokenA = getTokenByAddress(chainId, t0 as Address);
-            const tokenB = getTokenByAddress(chainId, t1 as Address);
+            const tokenA = resolveToken(chainId, t0 as Address);
+            const tokenB = resolveToken(chainId, t1 as Address);
             if (!tokenA || !tokenB) return null;
             const ts = totalSupply as bigint;
             const amountA = (lpBalance * reserve0) / ts;

@@ -3,7 +3,6 @@ import { bsc, bscTestnet } from "wagmi/chains";
 /**
  * Dual-router architecture.
  *
- * The reference project (bunnySwap / AppleSwap) routes through its OWN factory
  * first and falls back to PancakeSwap when own liquidity is insufficient.
  * kept as separate PRIMARY / SECONDARY fields so the fallback can be enabled
  * later just by editing SECONDARY.
@@ -19,7 +18,7 @@ export const ROUTER_SECONDARY: Record<number, `0x${string}`> = {
   [bscTestnet.id]: "0xE22EaFbe4F57973Aad2de67071A751214bFB4461",
 };
 
-// 路由器_次级
+// 次路由
 export const FACTORY_PRIMARY: Record<number, `0x${string}`> = {
   [bsc.id]: "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73",
   [bscTestnet.id]: "0x2096C39c76526FE9468043251043dee5964Ee134",
@@ -28,12 +27,6 @@ export const FACTORY_PRIMARY: Record<number, `0x${string}`> = {
 export const FACTORY_SECONDARY: Record<number, `0x${string}`> = {
   [bsc.id]: "0xCe075f468410061772698f6f22AC0e6512875C56",
   [bscTestnet.id]: "0x2096C39c76526FE9468043251043dee5964Ee134",
-};
-
-// Wrapped native (WBNB) per chain.
-export const WNATIVE: Record<number, `0x${string}`> = {
-  [bsc.id]: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
-  [bscTestnet.id]: "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd",
 };
 
 // Pair contract init code hash (used if we ever compute pair addresses off-chain).
@@ -55,3 +48,9 @@ export function getFactoryAddresses(chainId: number) {
     secondary: FACTORY_SECONDARY[chainId],
   };
 }
+
+// Wrapped native (BNB、WBNB) per chain.
+export const WNATIVE: Record<number, `0x${string}`> = {
+  [bsc.id]: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+  [bscTestnet.id]: "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd",
+};

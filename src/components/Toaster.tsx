@@ -14,14 +14,14 @@ interface Toast {
   id: number;
   type: ToastType;
   message: ReactNode;
-  position: "top" | "bottom";
+  position: "top" | "bottom" | "top-right";
 }
 interface ToastApi {
   toast: (t: {
     type?: ToastType;
     message: ReactNode;
     duration?: number;
-    position?: "top" | "bottom";
+    position?: "top" | "bottom" | "top-right";
   }) => number;
   update: (id: number, t: { type?: ToastType; message: ReactNode }) => void;
   dismiss: (id: number) => void;
@@ -76,6 +76,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         position="top"
       />
       <ToastViewport
+        toasts={toasts.filter((t) => t.position === "top-right")}
+        onDismiss={dismiss}
+        position="top-right"
+      />
+      <ToastViewport
         toasts={toasts.filter((t) => t.position === "bottom")}
         onDismiss={dismiss}
         position="bottom"
@@ -98,11 +103,17 @@ export function ToastViewport({
 }: {
   toasts: Toast[];
   onDismiss: (id: number) => void;
-  position?: "top" | "bottom";
+  position?: "top" | "bottom" | "top-right";
 }) {
-  const posClass = position === "top" ? "top-20" : "bottom-5";
+  const posClass =
+    position === "top"
+      ? "top-20 left-1/2 -translate-x-1/2"
+      : position === "top-right"
+        ? "top-20 right-4 left-auto translate-x-0"
+        : "bottom-5 left-1/2 -translate-x-1/2";
+  const alignClass = position === "top-right" ? "items-end ml-auto" : "items-center mx-auto";
   return (
-    <div className={`pointer-events-none fixed left-1/2 z-[70] flex w-full max-w-sm -translate-x-1/2 flex-col gap-2 px-4 ${posClass}`}>
+    <div className={`pointer-events-none fixed z-[70] flex w-full max-w-sm flex-col gap-2 px-4 ${posClass} ${alignClass}`}>
       {toasts.map((t) => (
         <div
           key={t.id}

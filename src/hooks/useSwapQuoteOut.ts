@@ -4,6 +4,7 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
 import { parseUnits, formatUnits } from "viem";
 import type { SwapToken } from "@/config/tokens";
+import { getTokenList } from "@/config/tokens";
 import {
   getRouterAddresses,
   getFactoryAddresses,
@@ -15,6 +16,7 @@ import {
   buildPaths,
   computeMaxAmountIn,
   computeAutoSlippageBps,
+  computePathPriceImpact,
   effectiveRate,
   type Address,
 } from "@/lib/swap";
@@ -49,10 +51,14 @@ async function quoteWithRouterOut(
   wnative: Address,
   tokenIn: SwapToken,
   tokenOut: SwapToken,
-  amountOutWei: bigint
+  amountOutWei: bigint,
+  chainId: number
 ): Promise<Omit<SwapQuoteOut, "slippageBps"> | null> {
-  const paths = buildPaths(tokenIn, tokenOut, wnative);
+  const paths = buildPaths(tokenIn, tokenOut, wnative, getTokenList(chainId));
 
+  // Visit every candidate path and keep the one requiring the LEAST input
+  // (best price), so an indirect route is chosen only when it beats the direct.
+  let best: Omit<SwapQuoteOut, "slippageBps"> | null = null;
   for (const path of paths) {
     // 1) Verify every adjacent pair exists in this factory.
     const pairChecks = await Promise.all(
@@ -79,20 +85,28 @@ async function quoteWithRouterOut(
         args: [amountOutWei, path],
       });
       const inWei = amounts[0] as bigint;
-      if (inWei > 0n) {
+      if (inWei > 0n && (!best || inWei < best.amountIn)) {
         const rate = effectiveRate(
           inWei,
           amountOutWei,
           tokenIn.decimals,
           tokenOut.decimals
         );
-        return { amountIn: inWei, amountInMax: inWei, path, rate };
+        // Compound price impact across all hops of this path (direct or
+        // bridged), so the "—" placeholder never shows for a real quote.
+        const priceImpact = await computePathPriceImpact(
+          publicClient,
+          factory,
+          path,
+          amounts as readonly bigint[]
+        );
+        best = { amountIn: inWei, amountInMax: inWei, path, rate, priceImpact };
       }
     } catch {
       // path not tradeable through this router
     }
   }
-  return null;
+  return best;
 }
 
 export function useSwapQuoteOut({
@@ -123,6 +137,9 @@ export function useSwapQuoteOut({
       !!amountOut &&
       parseFloat(amountOut) > 0,
     staleTime: 10_000,
+    // Poll the chain every 5s while an amount is entered so the displayed
+    // Token1 (amountInMax) tracks live reserves instead of going stale.
+    refetchInterval: 5_000,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<(SwapQuoteOut & { amountInMax: bigint }) | null> => {
       if (!publicClient || !tokenIn || !tokenOut) return null;
@@ -150,7 +167,8 @@ export function useSwapQuoteOut({
           wnative,
           tokenIn,
           tokenOut,
-          amountOutWei
+          amountOutWei,
+          chainId as number
         )) ??
         (routerS !== routerP
           ? await quoteWithRouterOut(
@@ -160,75 +178,23 @@ export function useSwapQuoteOut({
               wnative,
               tokenIn,
               tokenOut,
-              amountOutWei
+              amountOutWei,
+              chainId as number
             )
           : null);
 
       if (!quote) return null;
 
-      // Single-hop price impact using pool reserves (path direction is [in, out]).
-      let priceImpact: number | undefined;
-      if (quote.path.length === 2) {
-        try {
-          const pair = await publicClient.readContract({
-            address: factoryP,
-            abi: FACTORY_ABI,
-            functionName: "getPair",
-            args: [quote.path[0], quote.path[1]],
-          });
-          if (pair && pair !== "0x0000000000000000000000000000000000000000") {
-            const [reserve0, reserve1] = await publicClient.readContract({
-              address: pair as Address,
-              abi: [
-                {
-                  type: "function",
-                  name: "getReserves",
-                  stateMutability: "view",
-                  inputs: [],
-                  outputs: [
-                    { name: "reserve0", type: "uint112" },
-                    { name: "reserve1", type: "uint112" },
-                    { name: "blockTimestampLast", type: "uint32" },
-                  ],
-                },
-              ],
-              functionName: "getReserves",
-            });
-            const token0 = await publicClient.readContract({
-              address: pair as Address,
-              abi: [
-                {
-                  type: "function",
-                  name: "token0",
-                  stateMutability: "view",
-                  inputs: [],
-                  outputs: [{ name: "", type: "address" }],
-                },
-              ],
-              functionName: "token0",
-            });
-            const inIsToken0 =
-              (token0 as Address).toLowerCase() === quote.path[0].toLowerCase();
-            const reserveIn = inIsToken0 ? reserve0 : reserve1;
-            const reserveOut = inIsToken0 ? reserve1 : reserve0;
-            const mid =
-              Number(reserveOut) / 10 ** tokenOut.decimals /
-              (Number(reserveIn) / 10 ** tokenIn.decimals);
-            if (mid > 0) priceImpact = (mid - quote.rate) / mid;
-          }
-        } catch {
-          // ignore impact calc errors
-        }
-      }
-
       // Resolve the effective slippage: auto derives it from the live price
       // impact (clamped to [0.5%, 5%]); manual uses the user's fixed value.
+      // priceImpact is already computed (per-hop compounded) inside
+      // quoteWithRouterOut, so it's valid for both direct and bridged routes.
       const effectiveBps = autoSlippage
-        ? computeAutoSlippageBps(priceImpact)
+        ? computeAutoSlippageBps(quote.priceImpact)
         : slippageBps;
       const amountInMax = computeMaxAmountIn(quote.amountIn, effectiveBps);
 
-      return { ...quote, amountInMax, priceImpact, slippageBps: effectiveBps };
+      return { ...quote, amountInMax, slippageBps: effectiveBps };
     },
   });
 }

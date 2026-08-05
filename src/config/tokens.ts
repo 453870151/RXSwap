@@ -3,47 +3,123 @@ import { WNATIVE } from "./contracts";
 import { CHAIN_TOKENS } from "./token";
 
 export interface SwapToken {
-  /** ERC20 address, or the wrapped-native address for the native asset. */
+  /** ERC20 address, or the ZERO placeholder for the native asset. */
   address: `0x${string}`;
   symbol: string;
   name: string;
   decimals: number;
   chainId: number;
-  /** Native asset (BNB / tBNB). Uses wrapped-native address for pair math. */
+  /** Native asset (BNB / tBNB). Represented by the zero-address placeholder. */
   isNative?: boolean;
-  /** A color used to render a generated token badge (no external images). */
-  color: string;
+  /** Remote logo URL. When empty, falls back to a local image then a generated SVG badge. */
+  logoURI?: string;
 }
 
+/** Zero-address placeholder standing in for the chain's native asset. */
 const ZERO = "0x0000000000000000000000000000000000000000" as `0x${string}`;
 
-export function getTokenList(chainId: number): SwapToken[] {
-  return CHAIN_TOKENS[chainId] ?? CHAIN_TOKENS[bsc.id] ?? [];
-}
+// Per-chain native-asset metadata. The native coin is synthesized (zero-address
+// placeholder + `isNative`) rather than stored in the per-chain files, so its
+// display data (symbol / name / logo) lives here, keyed by chainId. Add a new
+// chain by appending one entry — no other code needs to change.
+const NATIVE_META: Record<
+  number,
+  { symbol: string; name: string; logoURI: string }
+> = {
+  [bsc.id]: {
+    symbol: "BNB",
+    name: "BNB",
+    logoURI:
+      "https://tokens.pancakeswap.finance/images/0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c.png",
+  },
+  [bscTestnet.id]: {
+    symbol: "tBNB",
+    name: "BNB Testnet",
+    logoURI:
+      "https://tokens.pancakeswap.finance/images/0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c.png",
+  },
+};
+
+// Fallback used for any chain not present in NATIVE_META.
+const DEFAULT_NATIVE = NATIVE_META[bsc.id];
 
 export function getNativeToken(chainId: number): SwapToken {
-  const list = getTokenList(chainId);
-  const native = list.find((t) => t.isNative);
-  if (native) return native;
-  // Fallback: synthetic native using wrapped address.
+  // The native asset is synthesized here with the zero-address placeholder and
+  // the `isNative` flag — it is NOT stored in the per-chain files. Routing,
+  // balances and approval logic key off `isNative`, never the placeholder.
+  // Display metadata is resolved per-chain via NATIVE_META.
+  const meta = NATIVE_META[chainId] ?? DEFAULT_NATIVE;
   return {
-    address: WNATIVE[chainId],
-    symbol: chainId === bscTestnet.id ? "tBNB" : "BNB",
-    name: "BNB",
+    address: ZERO,
+    symbol: meta.symbol,
+    name: meta.name,
     decimals: 18,
     chainId,
     isNative: true,
-    color: "#F0B90B",
+    logoURI: meta.logoURI,
   };
+}
+
+// Raw per-chain token lists (do NOT include a synthetic native entry).
+function rawTokenList(chainId: number): SwapToken[] {
+  return CHAIN_TOKENS[chainId] ?? CHAIN_TOKENS[bsc.id] ?? [];
+}
+
+/**
+ * Token list with the native asset pinned to the front (per user request:
+ * "show the chain's main coin first" in the select modal). The native entry is
+ * prepended, not stored in the per-chain files, so each chain self-documents
+ * its native asset without duplicating it.
+ */
+export function getTokenList(chainId: number): SwapToken[] {
+  return [getNativeToken(chainId), ...rawTokenList(chainId)];
 }
 
 export function getTokenByAddress(
   chainId: number,
   address: `0x${string}`
 ): SwapToken | undefined {
-  const list = getTokenList(chainId);
   const target = address.toLowerCase();
-  return list.find((t) => t.address.toLowerCase() === target);
+  return getTokenList(chainId).find(
+    (t) => t.address.toLowerCase() === target
+  );
+}
+
+/**
+ * Default swap pair per chain, keyed by token address. The native asset uses
+ * ZERO_ADDRESS. Adding a new chain only requires a new entry here plus the
+ * per-chain file under config/token/.
+ */
+export const DEFAULT_TOKENS: Record<
+  number,
+  { tokenIn: `0x${string}`; tokenOut: `0x${string}` }
+> = {
+  [bsc.id]: {
+    tokenIn: ZERO, // BNB
+    tokenOut: "0x55d398326f99059fF775485246999027B3197955", // USDT
+  },
+  [bscTestnet.id]: {
+    tokenIn: ZERO, // tBNB
+    tokenOut: "0x44004827f2F72566E12884A38f63f72F2a5143ea", // USDT (testnet)
+  },
+};
+
+export function getDefaultTokenIn(chainId: number): SwapToken {
+  const def = DEFAULT_TOKENS[chainId];
+  const addr = def?.tokenIn ?? ZERO;
+  return getTokenByAddress(chainId, addr) ?? getNativeToken(chainId);
+}
+
+export function getDefaultTokenOut(chainId: number): SwapToken {
+  const def = DEFAULT_TOKENS[chainId];
+  const candidate = def?.tokenOut
+    ? getTokenByAddress(chainId, def.tokenOut)
+    : undefined;
+  return (
+    candidate ??
+    rawTokenList(chainId).find((t) => !t.isNative) ??
+    getNativeToken(chainId)
+  );
 }
 
 export { ZERO as ZERO_ADDRESS };

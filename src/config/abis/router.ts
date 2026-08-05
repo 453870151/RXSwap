@@ -1,4 +1,3 @@
-// PancakeSwap V2 Router — the subset of methods we use.
 export const ROUTER_ABI = [
   {
     type: "function",

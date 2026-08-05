@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAccount, usePublicClient } from "wagmi";
+import { useQueryClient } from "@tanstack/react-query";
 import { parseUnits, maxUint256 } from "viem";
 import clsx from "clsx";
 import { bsc } from "wagmi/chains";
@@ -25,6 +26,7 @@ export function LiquidityCard() {
   const { address, isConnected, chainId: connectedChain } = useAccount();
   const chainId = connectedChain ?? bsc.id;
   const publicClient = usePublicClient({ chainId });
+  const queryClient = useQueryClient();
   const { toast, update } = useToast();
   const { approve } = useApprove();
   const { addLiquidity, isPending } = useAddLiquidity();
@@ -115,6 +117,10 @@ export function LiquidityCard() {
       setAmountA("");
       setAmountB("");
       reserves.refetch();
+      // Refresh the positions list below so the just-added LP shows immediately.
+      queryClient.invalidateQueries({
+        queryKey: ["liquidity-positions", chainId, address],
+      });
     } catch (e: any) {
       toast({ type: "error", message: e?.shortMessage || e?.message || t("toast.txFailed") });
     } finally {

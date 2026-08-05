@@ -14,7 +14,13 @@ export function useTokenBalance(
   const publicClient = usePublicClient({ chainId });
 
   return useQuery({
-    queryKey: ["balance", chainId, token?.address, account],
+    queryKey: [
+      "balance",
+      chainId,
+      token?.address,
+      token?.isNative ? "native" : "erc20",
+      account,
+    ],
     enabled: !!token && !!account && !!publicClient,
     staleTime: 12_000,
     queryFn: async (): Promise<bigint> => {

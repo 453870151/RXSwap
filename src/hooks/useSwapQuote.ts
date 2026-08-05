@@ -4,6 +4,7 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
 import { parseUnits } from "viem";
 import type { SwapToken } from "@/config/tokens";
+import { getTokenList } from "@/config/tokens";
 import {
   getRouterAddresses,
   getFactoryAddresses,
@@ -15,6 +16,7 @@ import {
   buildPaths,
   computeMinAmountOut,
   computeAutoSlippageBps,
+  computePathPriceImpact,
   effectiveRate,
   type Address,
 } from "@/lib/swap";
@@ -45,11 +47,13 @@ async function quoteWithRouter(
   wnative: Address,
   tokenIn: SwapToken,
   tokenOut: SwapToken,
-  amountInWei: bigint
+  amountInWei: bigint,
+  chainId: number
 ): Promise<Omit<SwapQuote, "slippageBps"> | null> {
-  const paths = buildPaths(tokenIn, tokenOut, wnative);
+  const paths = buildPaths(tokenIn, tokenOut, wnative, getTokenList(chainId));
 
   // 1) Verify every adjacent pair exists in this factory.
+  let best: Omit<SwapQuote, "slippageBps"> | null = null;
   for (const path of paths) {
     const pairChecks = await Promise.all(
       path.slice(0, -1).map((_, i) =>
@@ -75,7 +79,7 @@ async function quoteWithRouter(
         args: [amountInWei, path],
       });
       const out = amounts[amounts.length - 1] as bigint;
-      if (out > 0n) {
+      if (out > 0n && (!best || out > best.amountOut)) {
         const minOut = computeMinAmountOut(out, 0); // slippage applied by caller
         const rate = effectiveRate(
           amountInWei,
@@ -83,13 +87,21 @@ async function quoteWithRouter(
           tokenIn.decimals,
           tokenOut.decimals
         );
-        return { amountOut: out, amountOutMin: minOut, path, rate };
+        // Compound price impact across all hops of this path (direct or
+        // bridged), so the "—" placeholder never shows for a real quote.
+        const priceImpact = await computePathPriceImpact(
+          publicClient,
+          factory,
+          path,
+          amounts as readonly bigint[]
+        );
+        best = { amountOut: out, amountOutMin: minOut, path, rate, priceImpact };
       }
     } catch {
       // path not tradeable through this router
     }
   }
-  return null;
+  return best;
 }
 
 export function useSwapQuote({
@@ -120,6 +132,11 @@ export function useSwapQuote({
       !!amountIn &&
       parseFloat(amountIn) > 0,
     staleTime: 10_000,
+    // Poll the chain every 5s while an amount is entered so the displayed
+    // Token2 tracks live reserves (price drift) instead of going stale.
+    // Only runs while `enabled` is true and the tab is focused (default
+    // refetchIntervalInBackground: false), so it costs nothing when idle.
+    refetchInterval: 5_000,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<(SwapQuote & { amountOutMin: bigint }) | null> => {
       if (!publicClient || !tokenIn || !tokenOut) return null;
@@ -148,7 +165,8 @@ export function useSwapQuote({
           wnative,
           tokenIn,
           tokenOut,
-          amountInWei
+          amountInWei,
+          chainId as number
         )) ??
         (routerS !== routerP
           ? await quoteWithRouter(
@@ -158,75 +176,23 @@ export function useSwapQuote({
               wnative,
               tokenIn,
               tokenOut,
-              amountInWei
+              amountInWei,
+              chainId as number
             )
           : null);
 
       if (!quote) return null;
 
-      // Single-hop price impact using pool reserves.
-      let priceImpact: number | undefined;
-      if (quote.path.length === 2) {
-        try {
-          const pair = await publicClient.readContract({
-            address: factoryP,
-            abi: FACTORY_ABI,
-            functionName: "getPair",
-            args: [quote.path[0], quote.path[1]],
-          });
-          if (pair && pair !== "0x0000000000000000000000000000000000000000") {
-            const [reserve0, reserve1] = await publicClient.readContract({
-              address: pair as Address,
-              abi: [
-                {
-                  type: "function",
-                  name: "getReserves",
-                  stateMutability: "view",
-                  inputs: [],
-                  outputs: [
-                    { name: "reserve0", type: "uint112" },
-                    { name: "reserve1", type: "uint112" },
-                    { name: "blockTimestampLast", type: "uint32" },
-                  ],
-                },
-              ],
-              functionName: "getReserves",
-            });
-            const token0 = await publicClient.readContract({
-              address: pair as Address,
-              abi: [
-                {
-                  type: "function",
-                  name: "token0",
-                  stateMutability: "view",
-                  inputs: [],
-                  outputs: [{ name: "", type: "address" }],
-                },
-              ],
-              functionName: "token0",
-            });
-            const inIsToken0 =
-              (token0 as Address).toLowerCase() === quote.path[0].toLowerCase();
-            const reserveIn = inIsToken0 ? reserve0 : reserve1;
-            const reserveOut = inIsToken0 ? reserve1 : reserve0;
-            const mid =
-              Number(reserveOut) / 10 ** tokenOut.decimals /
-              (Number(reserveIn) / 10 ** tokenIn.decimals);
-            if (mid > 0) priceImpact = (mid - quote.rate) / mid;
-          }
-        } catch {
-          // ignore impact calc errors
-        }
-      }
-
       // Resolve the effective slippage: auto derives it from the live price
       // impact (clamped to [0.5%, 5%]); manual uses the user's fixed value.
+      // priceImpact is already computed (per-hop compounded) inside
+      // quoteWithRouter, so it's valid for both direct and bridged routes.
       const effectiveBps = autoSlippage
-        ? computeAutoSlippageBps(priceImpact)
+        ? computeAutoSlippageBps(quote.priceImpact)
         : slippageBps;
       const amountOutMin = computeMinAmountOut(quote.amountOut, effectiveBps);
 
-      return { ...quote, amountOutMin, priceImpact, slippageBps: effectiveBps };
+      return { ...quote, amountOutMin, slippageBps: effectiveBps };
     },
   });
 }

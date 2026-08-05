@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useConnect, usePublicClient } from "wagmi";
 import { parseUnits, maxUint256 } from "viem";
@@ -10,25 +10,61 @@ import {
   getTokenList,
   getNativeToken,
   getTokenByAddress,
+  getDefaultTokenIn,
+  getDefaultTokenOut,
   type SwapToken,
 } from "@/config/tokens";
-import { getRouterAddresses } from "@/config/contracts";
+import { getRouterAddresses, WNATIVE } from "@/config/contracts";
 import { useSwapQuote } from "@/hooks/useSwapQuote";
 import { useSwapQuoteOut } from "@/hooks/useSwapQuoteOut";
 import { useTokenBalance } from "@/hooks/useTokenBalance";
 import { useTokenAllowance } from "@/hooks/useTokenAllowance";
 import { useApprove } from "@/hooks/useApprove";
 import { useSwapWrite } from "@/hooks/useSwapWrite";
-import { useToast } from "./Toaster";
 import { TokenLogo } from "./TokenLogo";
 import { TokenSelectModal } from "./TokenSelectModal";
+import { SwapConfirmModal } from "./SwapConfirmModal";
 import { useTranslation } from "./LanguageProvider";
-import { formatAmount } from "@/lib/format";
+import { useToast } from "./Toaster";
+import {
+  formatAmount,
+  formatSlippage,
+  formatPriceImpact,
+  priceImpactColor,
+} from "@/lib/format";
 import { getChainMeta, SUPPORTED_CHAINS } from "@/config/chains";
 import type { Address } from "@/lib/swap";
 
 const SLIPPAGE_OPTIONS = [10, 50, 100]; // 0.1% / 0.5% / 1%
 const SLIPPAGE_STORAGE_KEY = "rxswap-slippage";
+
+// Build a display token for a route-hop address. The wrapped-native node is
+// mapped to the native asset (BNB) for intuitive display (design decision:
+// 方案 A), reusing the native token's logo; everywhere else it falls back to a
+// generated badge.
+function buildRouteToken(addr: Address, chainId: number): SwapToken {
+  const wnative = WNATIVE[chainId];
+  if (addr.toLowerCase() === wnative.toLowerCase()) {
+    const native = getNativeToken(chainId);
+    return {
+      address: addr,
+      symbol: native.symbol,
+      name: native.name,
+      decimals: native.decimals,
+      chainId,
+      logoURI: native.logoURI,
+    };
+  }
+  return (
+    getTokenByAddress(chainId, addr) ?? {
+      address: addr,
+      symbol: `${addr.slice(0, 4)}…${addr.slice(-2)}`,
+      name: addr,
+      decimals: 18,
+      chainId,
+    }
+  );
+}
 
 function loadSavedSlippage(): { auto: boolean; bps: number } {
   if (typeof window === "undefined") return { auto: true, bps: 50 };
@@ -58,21 +94,19 @@ export function SwapCard() {
   const chainId = connectedChainSupported ? (connectedChain as number) : bsc.id;
   const unsupportedChain = isConnected && !connectedChainSupported;
   const publicClient = usePublicClient({ chainId });
-  const { toast, update } = useToast();
   const { approve } = useApprove();
   const { swap, isPending: swapping } = useSwapWrite();
   const { connect, connectors, isPending: connecting } = useConnect();
   const queryClient = useQueryClient();
 
-  // Seed defaults immediately (BSC native in, first stable out) so neither
-  // field ever flashes an empty "Select" button before the effect runs.
+  // Seed defaults from the per-chain default pair config (DEFAULT_TOKENS) so
+  // neither field flashes an empty "Select" before the effect runs.
   const [tokenIn, setTokenIn] = useState<SwapToken | undefined>(() =>
-    getNativeToken(bsc.id)
+    getDefaultTokenIn(chainId)
   );
-  const [tokenOut, setTokenOut] = useState<SwapToken | undefined>(() => {
-    const list = getTokenList(bsc.id);
-    return list.find((t) => !t.isNative) ?? list[0];
-  });
+  const [tokenOut, setTokenOut] = useState<SwapToken | undefined>(() =>
+    getDefaultTokenOut(chainId)
+  );
   // Single source of truth: which field the user is editing, and the typed text.
   const [independentField, setIndependentField] = useState<"in" | "out">("in");
   const [typedValue, setTypedValue] = useState("");
@@ -86,7 +120,31 @@ export function SwapCard() {
   const [modalSide, setModalSide] = useState<"in" | "out" | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showInverseRate, setShowInverseRate] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const settingsWrapRef = useRef<HTMLDivElement>(null);
+
+  const { toast } = useToast();
+
+  // Close the slippage popup when clicking anywhere outside it (including the
+  // gear toggle, which stays inside this wrapper so its own onClick still toggles).
+  useEffect(() => {
+    if (!showSettings) return;
+    function onPointerDown(e: MouseEvent | TouchEvent) {
+      if (
+        settingsWrapRef.current &&
+        !settingsWrapRef.current.contains(e.target as Node)
+      ) {
+        setShowSettings(false);
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [showSettings]);
 
   // Persist slippage preference across reloads.
   useEffect(() => {
@@ -98,19 +156,11 @@ export function SwapCard() {
     } catch {}
   }, [autoSlippage, slippageBps]);
 
-  // Defaults: native in, first stable out.
+  // On chain switch: reset to this chain's default pair and clear the typed
+  // amount so the user starts fresh for the new pair / liquidity landscape.
   useEffect(() => {
-    const list = getTokenList(chainId);
-    const native = getNativeToken(chainId);
-    setTokenIn((prev) =>
-      prev && getTokenByAddress(chainId, prev.address) ? prev : native
-    );
-    setTokenOut((prev) => {
-      if (prev && getTokenByAddress(chainId, prev.address)) return prev;
-      return list.find((t) => !t.isNative) ?? list[0];
-    });
-    // Switching chain resets the typed amount so the user starts fresh for the
-    // new pair / liquidity landscape.
+    setTokenIn(getDefaultTokenIn(chainId));
+    setTokenOut(getDefaultTokenOut(chainId));
     setTypedValue("");
     setIndependentField("in");
   }, [chainId]);
@@ -172,7 +222,11 @@ export function SwapCard() {
     : forwardQuote.data?.amountOutMin ?? 0n;
 
   const activeQuote = isExactOut ? reverseQuote.data : forwardQuote.data;
-  const isFetching = isExactOut ? reverseQuote.isFetching : forwardQuote.isFetching;
+  // True only on the very first fetch (no data yet). Background polling
+  // refetches keep `data` (via keepPreviousData) and are NOT `isLoading`,
+  // so we drive the spinner / card-hide off `isLoading` to avoid flicker
+  // every 5s — the quote updates silently as reserves change.
+  const isLoading = isExactOut ? reverseQuote.isLoading : forwardQuote.isLoading;
 
   // Effective slippage to display: the quote hook already resolved auto vs
   // manual into `slippageBps`. Fall back to 0.5% (auto floor) / manual value
@@ -228,7 +282,6 @@ export function SwapCard() {
     setTypedValue(v);
   }
 
-  // Mirror PancakeSwap/andros-swap switchCurrencies: swap tokens, flip the
   // independent field, and KEEP typedValue. The value stays attached to the
   // field role, so the now-dependent box recalculates automatically.
   function flip() {
@@ -289,42 +342,27 @@ export function SwapCard() {
     if (payWei <= 0n) return;
     setBusy(true);
     const router = getRouterAddresses(chainId).primary;
-    // Track the active pending toast id so we can resolve/dismiss it cleanly
-    // on success, rejection, or any other failure (pending toasts never auto-close).
-    let pendingId: number | undefined;
     try {
       if (needsApproval) {
-        pendingId = toast({
-          type: "pending",
-          message: t("toast.approving", { symbol: tokenIn.symbol }),
-        });
         const h = await approve(tokenIn.address, router, maxUint256);
         const receipt = await publicClient.waitForTransactionReceipt({
           hash: h,
           timeout: 180_000,
         });
         if (receipt.status !== "success") {
-          // On-chain execution reverted — this is not a valid approval.
+          // On-chain execution reverted — not a valid approval.
           queryClient.invalidateQueries({ queryKey: ["balance", chainId] });
-          update(pendingId, { type: "error", message: t("toast.txFailed") });
           return;
         }
         // Approval is a transaction too — refresh the allowance so the "授权"
         // button flips back to "兑换", and refresh balances.
         await refetchAllowance();
         queryClient.invalidateQueries({ queryKey: ["balance", chainId] });
-        update(pendingId, {
-          type: "success",
-          message: t("toast.approved", { symbol: tokenIn.symbol }),
-        });
-        pendingId = undefined;
       }
       const q = activeQuote;
       if (!q) {
-        toast({ type: "error", message: t("swap.noRoute") });
         return;
       }
-      pendingId = toast({ type: "pending", message: t("toast.swapping") });
       const h = await swap({
         tokenIn,
         tokenOut,
@@ -340,46 +378,43 @@ export function SwapCard() {
         timeout: 180_000,
       });
       if (receipt.status !== "success") {
-        // On-chain execution reverted — surface as a failure, NOT success.
-        // Keep the typed amount so the user can adjust and retry.
+        // On-chain execution reverted — surface as a failure. Keep the typed
+        // amount so the user can adjust and retry.
         queryClient.invalidateQueries({ queryKey: ["balance", chainId] });
-        update(pendingId, { type: "error", message: t("toast.txFailed") });
         return;
       }
-      // Swap succeeded — pull the latest balances for both tokens so the UI
-      // reflects the new amounts immediately (staleTime is bypassed by invalidate).
+      // Swap succeeded — refresh balances, clear the input, close the confirm
+      // modal, and surface the transaction hash as a top-right notification.
       queryClient.invalidateQueries({ queryKey: ["balance", chainId] });
-      const meta = getChainMeta(chainId);
-      update(pendingId, {
-        type: "success",
-        message: (
-          <a
-            href={`${meta?.explorer}/tx/${h}`}
-            target="_blank"
-            rel="noreferrer"
-            className="underline"
-          >
-            {t("swap.confirmed")} · {t("common.viewExplorer")}
-          </a>
-        ),
-      });
       setTypedValue("");
       setIndependentField("in");
+      setShowConfirm(false);
+      const explorer = getChainMeta(chainId)?.explorer;
+      toast({
+        type: "success",
+        position: "top-right",
+        message: (
+          <span className="flex flex-col gap-1">
+            <span className="font-semibold">{t("swap.transactionSuccess")}</span>
+            {explorer ? (
+              <a
+                href={`${explorer}/tx/${h}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 text-xs text-accent-soft hover:underline"
+              >
+                <span className="font-mono">{`${h.slice(0, 8)}…${h.slice(-6)}`}</span>
+                <span>{t("common.viewExplorer")}</span>
+              </a>
+            ) : (
+              <span className="font-mono text-xs opacity-80">{`${h.slice(0, 8)}…${h.slice(-6)}`}</span>
+            )}
+          </span>
+        ),
+      });
     } catch (e: any) {
-      const rejected =
-        e?.name === "UserRejectedRequestError" ||
-        e?.code === 4001 ||
-        /reject/i.test(e?.shortMessage || e?.message || "");
-      const msg = rejected
-        ? t("toast.rejected")
-        : e?.shortMessage || e?.message || t("toast.txFailed");
-      if (pendingId) {
-        // Flip the lingering "兌換中…" toast into the error/rejection toast
-        // (update() auto-dismisses non-pending toasts, so it won't hang).
-        update(pendingId, { type: "error", message: msg });
-      } else {
-        toast({ type: "error", message: msg });
-      }
+      // Wallet rejection or other error — swallow. The confirm modal stays
+      // open with the button reset, so the user can retry directly.
     } finally {
       setBusy(false);
     }
@@ -400,18 +435,20 @@ export function SwapCard() {
   } else if (!hasAmountInput) {
     buttonLabel = t("swap.enterAmount");
     disabled = true;
-  } else if (insufficient) {
-    buttonLabel = t("swap.insufficientBalance", { symbol: tokenIn?.symbol ?? "" });
-    disabled = true;
-  } else if (isFetching) {
-    // Quote is refreshing — show a spinner + fetching label instead of a stale
-    // action label, and keep the button disabled.
+  } else if (isLoading) {
+    // First quote load (no data yet) — show a spinner + fetching label and
+    // keep the button disabled. Background polling refetches do NOT hit this
+    // branch, so the quote stays live/visible while reserves update.
     buttonLabel = t("swap.fetchingQuote");
     disabled = true;
   } else if (!activeQuote) {
     // No trading route for this pair → surface "insufficient liquidity"
-    // directly on the button.
+    // directly on the button. Checked BEFORE balance so a no-route pair is
+    // never mislabeled as insufficient balance.
     buttonLabel = t("swap.noRoute");
+    disabled = true;
+  } else if (insufficient) {
+    buttonLabel = t("swap.insufficientBalance", { symbol: tokenIn?.symbol ?? "" });
     disabled = true;
   } else if (needsApproval) {
     buttonLabel = t("swap.approve", { symbol: tokenIn.symbol });
@@ -424,7 +461,7 @@ export function SwapCard() {
     <div className="glass w-full max-w-md animate-fade-up rounded-3xl p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-bold">{t("swap.title")}</h2>
-        <div className="relative">
+        <div className="relative" ref={settingsWrapRef}>
           <button
             onClick={() => setShowSettings((s) => !s)}
             className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--hover)]"
@@ -433,7 +470,7 @@ export function SwapCard() {
             ⚙
           </button>
           {showSettings && (
-            <div className="absolute right-0 z-20 mt-2 w-80 animate-fade-up rounded-2xl border border-[var(--glass-border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--card-shadow)]">
+            <div className="absolute right-0 z-20 mt-2 w-96 max-w-[95vw] animate-fade-up rounded-2xl border border-[var(--glass-border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--card-shadow)]">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs font-semibold text-[var(--text-muted)]">
                   {t("swap.slippageTolerance")}
@@ -491,7 +528,7 @@ export function SwapCard() {
                   <input
                     type="number"
                     value={customSlippage}
-                    placeholder={(effectiveSlippageBps / 100).toFixed(2)}
+                    placeholder={formatSlippage(effectiveSlippageBps)}
                     step="0.1"
                     min="0.1"
                     onChange={(e) => {
@@ -591,12 +628,18 @@ export function SwapCard() {
             connect({ connector: connectors[0] });
             return;
           }
-          handleAction();
+          // Approval is a prerequisite, not a swap — execute it directly.
+          // For the actual swap, show a secondary confirmation modal first.
+          if (needsApproval) {
+            handleAction();
+          } else {
+            setShowConfirm(true);
+          }
         }}
         disabled={disabled}
         className="btn-primary mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-bold"
       >
-        {isFetching ? (
+        {isLoading ? (
           <>
             <svg
               className="h-4 w-4 animate-spin"
@@ -625,7 +668,7 @@ export function SwapCard() {
         )}
       </button>
 
-      {hasAmountInput && activeQuote && (
+      {hasAmountInput && activeQuote && !isLoading && (
         <div className="mt-3 space-y-3">
           {/* Rate + slippage single line, directly below the swap button */}
           <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
@@ -640,8 +683,8 @@ export function SwapCard() {
             <span>
               {t("swap.slippage")}：
               {autoSlippage
-                ? `${t("swap.auto")} ${(effectiveSlippageBps / 100).toFixed(2)}%`
-                : `${(effectiveSlippageBps / 100).toFixed(2)}%`}
+                ? `${t("swap.auto")} ${formatSlippage(effectiveSlippageBps)}%`
+                : `${formatSlippage(effectiveSlippageBps)}%`}
             </span>
           </div>
 
@@ -659,10 +702,38 @@ export function SwapCard() {
               label={t("swap.priceImpact")}
               value={
                 activeQuote.priceImpact != null
-                  ? `${(activeQuote.priceImpact * 100).toFixed(2)}%`
+                  ? formatPriceImpact(activeQuote.priceImpact)
                   : "—"
               }
+              color={
+                activeQuote.priceImpact != null
+                  ? priceImpactColor(activeQuote.priceImpact)
+                  : undefined
+              }
             />
+
+            {/* Swap route: BNB → USDT (direct) or BNB → BNB → USDT (via wrapped, shown as BNB) */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="shrink-0 text-[var(--text-muted)]">
+                {t("swap.route")}
+              </span>
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+                {activeQuote.path.map((addr, i) => {
+                  const tk = buildRouteToken(addr, chainId);
+                  return (
+                    <Fragment key={`${addr}-${i}`}>
+                      {i > 0 && (
+                        <span className="text-[var(--text-muted)]">→</span>
+                      )}
+                      <span className="flex items-center gap-1 font-medium">
+                        <TokenLogo token={tk} size={16} />
+                        {tk.symbol}
+                      </span>
+                    </Fragment>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -676,15 +747,43 @@ export function SwapCard() {
         onClose={() => setModalSide(null)}
         onSelect={(tk) => modalSide && onSelect(modalSide, tk)}
       />
+
+      {tokenIn && tokenOut && activeQuote && (
+        <SwapConfirmModal
+          open={showConfirm}
+          onClose={() => setShowConfirm(false)}
+          onConfirm={() => {
+            handleAction();
+          }}
+          tokenIn={tokenIn}
+          tokenOut={tokenOut}
+          payValue={payValue}
+          receiveValue={receiveValue}
+          activeQuote={activeQuote}
+          effectiveSlippageBps={effectiveSlippageBps}
+          autoSlippage={autoSlippage}
+          isBusy={busy || swapping}
+        />
+      )}
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color?: string;
+}) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-[var(--text-muted)]">{label}</span>
-      <span className="font-medium">{value}</span>
+      <span className="font-medium" style={color ? { color } : undefined}>
+        {value}
+      </span>
     </div>
   );
 }

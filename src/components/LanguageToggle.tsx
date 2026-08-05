@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { useTranslation } from "react-i18next";
-import { LOCALES, changeLanguage } from "@/lib/i18n";
+import { LOCALES, changeLanguage } from "@/locales/i18n";
 
 export function LanguageToggle() {
   const { i18n } = useTranslation();
