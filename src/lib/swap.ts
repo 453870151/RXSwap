@@ -42,6 +42,31 @@ export function computeMinAmountOut(
   return (amountOut * remaining) / 10000n;
 }
 
+/** Compute maximum amount in given a slippage in basis points (e.g. 50 = 0.5%). */
+export function computeMaxAmountIn(
+  amountIn: bigint,
+  slippageBps: number
+): bigint {
+  const expanded = 10000n + BigInt(slippageBps);
+  return (amountIn * expanded) / 10000n;
+}
+
+/**
+ * Auto slippage (basis points). Derived from the live price impact so the
+ * tolerance scales with how much the trade moves the pool:
+ *   effectiveBps = priceImpact * 2 + 0.3% buffer, clamped to [0.5%, 5%].
+ * When price impact is unavailable (e.g. multi-hop path), fall back to the
+ * safe 0.5% floor.
+ */
+export function computeAutoSlippageBps(priceImpact?: number): number {
+  const FLOOR = 50; // 0.5%
+  const CEIL = 500; // 5%
+  const BUFFER = 30; // 0.3%
+  if (priceImpact === undefined || priceImpact < 0) return FLOOR;
+  const raw = Math.ceil(priceImpact * 10000 * 2) + BUFFER;
+  return Math.max(FLOOR, Math.min(CEIL, raw));
+}
+
 /** Effective price: how many `out` units per 1 `in` unit. */
 export function effectiveRate(
   amountIn: bigint,

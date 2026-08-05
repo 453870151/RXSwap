@@ -5,12 +5,12 @@ import { bsc, bscTestnet } from "wagmi/chains";
  *
  * The reference project (bunnySwap / AppleSwap) routes through its OWN factory
  * first and falls back to PancakeSwap when own liquidity is insufficient.
- * Right now both addresses are identical ("双 Router 先用同一个"), but they are
  * kept as separate PRIMARY / SECONDARY fields so the fallback can be enabled
  * later just by editing SECONDARY.
  */
+// 主路由
 export const ROUTER_PRIMARY: Record<number, `0x${string}`> = {
-  [bsc.id]: "0xA40d547d3A3B835D6DeA72A95384F076d2c58301",
+  [bsc.id]: "0x10ED43C718714eb63d5aA57B78B54704E256024E",
   [bscTestnet.id]: "0xE22EaFbe4F57973Aad2de67071A751214bFB4461",
 };
 
@@ -19,9 +19,9 @@ export const ROUTER_SECONDARY: Record<number, `0x${string}`> = {
   [bscTestnet.id]: "0xE22EaFbe4F57973Aad2de67071A751214bFB4461",
 };
 
-// Swap factories (primary = bunnySwap / own, secondary = Pancake fallback).
+// 路由器_次级
 export const FACTORY_PRIMARY: Record<number, `0x${string}`> = {
-  [bsc.id]: "0xCe075f468410061772698f6f22AC0e6512875C56",
+  [bsc.id]: "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73",
   [bscTestnet.id]: "0x2096C39c76526FE9468043251043dee5964Ee134",
 };
 

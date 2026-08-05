@@ -2,7 +2,7 @@
 
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
-import { parseUnits } from "viem";
+import { parseUnits, formatUnits } from "viem";
 import type { SwapToken } from "@/config/tokens";
 import {
   getRouterAddresses,
@@ -13,44 +13,48 @@ import { FACTORY_ABI } from "@/config/abis/factory";
 import { ROUTER_ABI } from "@/config/abis/router";
 import {
   buildPaths,
-  computeMinAmountOut,
+  computeMaxAmountIn,
   computeAutoSlippageBps,
   effectiveRate,
   type Address,
 } from "@/lib/swap";
 
-export interface SwapQuote {
-  amountOut: bigint;
-  amountOutMin: bigint;
+export interface SwapQuoteOut {
+  /** Exact amount of tokenIn required to receive `amountOut`. */
+  amountIn: bigint;
+  /** amountIn inflated by slippage — the cap sent on-chain (amountInMax). */
+  amountInMax: bigint;
   path: Address[];
   rate: number;
   priceImpact?: number;
-  /** Effective slippage used for amountOutMin (auto or manual). */
+  /** Effective slippage used for amountInMax (auto or manual). */
   slippageBps: number;
 }
 
-interface QuoteParams {
+interface QuoteOutParams {
   tokenIn: SwapToken | undefined;
   tokenOut: SwapToken | undefined;
-  amountIn: string;
+  amountOut: string;
   slippageBps: number;
   autoSlippage: boolean;
   chainId: number | undefined;
 }
 
-async function quoteWithRouter(
+// Mirror of quoteWithRouter but for the EXACT-OUT direction: given a desired
+// output amount, resolve the required input amount via router.getAmountsIn.
+async function quoteWithRouterOut(
   publicClient: any,
   router: Address,
   factory: Address,
   wnative: Address,
   tokenIn: SwapToken,
   tokenOut: SwapToken,
-  amountInWei: bigint
-): Promise<Omit<SwapQuote, "slippageBps"> | null> {
+  amountOutWei: bigint
+): Promise<Omit<SwapQuoteOut, "slippageBps"> | null> {
   const paths = buildPaths(tokenIn, tokenOut, wnative);
 
-  // 1) Verify every adjacent pair exists in this factory.
   for (const path of paths) {
+    // 1) Verify every adjacent pair exists in this factory.
     const pairChecks = await Promise.all(
       path.slice(0, -1).map((_, i) =>
         publicClient.readContract({
@@ -66,24 +70,23 @@ async function quoteWithRouter(
     );
     if (!exists) continue;
 
-    // 2) Get amounts out for the valid path.
+    // 2) Get amounts in for the valid path (reverse of getAmountsOut).
     try {
       const amounts = await publicClient.readContract({
         address: router,
         abi: ROUTER_ABI,
-        functionName: "getAmountsOut",
-        args: [amountInWei, path],
+        functionName: "getAmountsIn",
+        args: [amountOutWei, path],
       });
-      const out = amounts[amounts.length - 1] as bigint;
-      if (out > 0n) {
-        const minOut = computeMinAmountOut(out, 0); // slippage applied by caller
+      const inWei = amounts[0] as bigint;
+      if (inWei > 0n) {
         const rate = effectiveRate(
-          amountInWei,
-          out,
+          inWei,
+          amountOutWei,
           tokenIn.decimals,
           tokenOut.decimals
         );
-        return { amountOut: out, amountOutMin: minOut, path, rate };
+        return { amountIn: inWei, amountInMax: inWei, path, rate };
       }
     } catch {
       // path not tradeable through this router
@@ -92,23 +95,23 @@ async function quoteWithRouter(
   return null;
 }
 
-export function useSwapQuote({
+export function useSwapQuoteOut({
   tokenIn,
   tokenOut,
-  amountIn,
+  amountOut,
   slippageBps,
   autoSlippage,
   chainId,
-}: QuoteParams) {
+}: QuoteOutParams) {
   const publicClient = usePublicClient({ chainId });
 
   return useQuery({
     queryKey: [
-      "swap-quote",
+      "swap-quote-out",
       chainId,
       tokenIn?.address,
       tokenOut?.address,
-      amountIn,
+      amountOut,
       autoSlippage,
       slippageBps,
     ],
@@ -117,19 +120,19 @@ export function useSwapQuote({
       !!tokenIn &&
       !!tokenOut &&
       tokenIn.address !== tokenOut.address &&
-      !!amountIn &&
-      parseFloat(amountIn) > 0,
+      !!amountOut &&
+      parseFloat(amountOut) > 0,
     staleTime: 10_000,
     placeholderData: keepPreviousData,
-    queryFn: async (): Promise<(SwapQuote & { amountOutMin: bigint }) | null> => {
+    queryFn: async (): Promise<(SwapQuoteOut & { amountInMax: bigint }) | null> => {
       if (!publicClient || !tokenIn || !tokenOut) return null;
-      let amountInWei: bigint;
+      let amountOutWei: bigint;
       try {
-        amountInWei = parseUnits(amountIn, tokenIn.decimals);
+        amountOutWei = parseUnits(amountOut, tokenOut.decimals);
       } catch {
         return null;
       }
-      if (amountInWei <= 0n) return null;
+      if (amountOutWei <= 0n) return null;
 
       const wnative = WNATIVE[chainId as number];
       const { primary: routerP, secondary: routerS } = getRouterAddresses(
@@ -139,32 +142,31 @@ export function useSwapQuote({
         chainId as number
       );
 
-      // Primary router first; fall back to secondary if no tradeable path.
       let quote =
-        (await quoteWithRouter(
+        (await quoteWithRouterOut(
           publicClient,
           routerP,
           factoryP,
           wnative,
           tokenIn,
           tokenOut,
-          amountInWei
+          amountOutWei
         )) ??
         (routerS !== routerP
-          ? await quoteWithRouter(
+          ? await quoteWithRouterOut(
               publicClient,
               routerS,
               factoryS,
               wnative,
               tokenIn,
               tokenOut,
-              amountInWei
+              amountOutWei
             )
           : null);
 
       if (!quote) return null;
 
-      // Single-hop price impact using pool reserves.
+      // Single-hop price impact using pool reserves (path direction is [in, out]).
       let priceImpact: number | undefined;
       if (quote.path.length === 2) {
         try {
@@ -224,9 +226,9 @@ export function useSwapQuote({
       const effectiveBps = autoSlippage
         ? computeAutoSlippageBps(priceImpact)
         : slippageBps;
-      const amountOutMin = computeMinAmountOut(quote.amountOut, effectiveBps);
+      const amountInMax = computeMaxAmountIn(quote.amountIn, effectiveBps);
 
-      return { ...quote, amountOutMin, priceImpact, slippageBps: effectiveBps };
+      return { ...quote, amountInMax, priceImpact, slippageBps: effectiveBps };
     },
   });
 }

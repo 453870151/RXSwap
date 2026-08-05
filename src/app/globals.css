@@ -81,7 +81,6 @@ body::before {
   }
   .btn-primary:hover:not(:disabled) {
     transform: translateY(-2px) scale(1.01);
-    box-shadow: 0 0 44px -6px rgba(232, 185, 35, 0.7);
     filter: brightness(1.05);
   }
   .btn-primary:active:not(:disabled) {
@@ -133,6 +132,38 @@ body::before {
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Token select modal: grey scrollbar (matches search bar bg = var(--input-bg)) */
+.token-select-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--input-bg) rgba(255, 255, 255, 0.05);
+}
+.token-select-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.token-select-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+}
+.token-select-scroll::-webkit-scrollbar-thumb {
+  background: var(--input-bg);
+  border-radius: 999px;
+}
+.token-select-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+}
+
+/* Remove number-input spinners (up/down arrows) */
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spinner {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 /* Skeleton shimmer */

@@ -151,8 +151,11 @@ export function LiquidityCard() {
   } else if (weiA <= 0n || weiB <= 0n) {
     label = t("swap.enterAmount");
     disabled = true;
-  } else if ((tokenA && weiA > (balA ?? 0n)) || (tokenB && weiB > (balB ?? 0n))) {
-    label = t("swap.insufficientBalance");
+  } else if (tokenA && weiA > (balA ?? 0n)) {
+    label = t("swap.insufficientBalance", { symbol: tokenA.symbol });
+    disabled = true;
+  } else if (tokenB && weiB > (balB ?? 0n)) {
+    label = t("swap.insufficientBalance", { symbol: tokenB.symbol });
     disabled = true;
   } else if (busy || isPending) {
     label = t("swap.confirming");
@@ -238,7 +241,7 @@ export function LiquidityCard() {
       <TokenSelectModal
         open={modalSide !== null}
         chainId={chainId}
-        exclude={modalSide === "a" ? tokenB?.address : tokenA?.address}
+        address={address}
         onClose={() => setModalSide(null)}
         onSelect={(t) => {
           if (modalSide === "a") {
