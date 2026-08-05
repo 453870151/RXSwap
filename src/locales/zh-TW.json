@@ -1,0 +1,87 @@
+{
+  "brand": {
+    "tagline": "兌換與流動性"
+  },
+  "nav": {
+    "home": "首頁",
+    "swap": "兌換",
+    "liquidity": "流動性"
+  },
+  "bottomNav": {
+    "home": "首頁",
+    "swap": "兌換",
+    "liquidity": "流動性",
+    "language": "語言"
+  },
+  "common": {
+    "select": "選擇",
+    "connectWallet": "連接錢包",
+    "disconnect": "斷開連接",
+    "copyAddress": "複製地址",
+    "copied": "已複製",
+    "switchNetwork": "切換網絡",
+    "connecting": "連接中…",
+    "search": "搜尋名稱或貼上地址",
+    "noTokensFound": "找不到代幣",
+    "max": "最大",
+    "balance": "餘額：",
+    "viewExplorer": "在區塊瀏覽器查看",
+    "settings": "設定",
+    "close": "關閉",
+    "connectedWallet": "已連接錢包"
+  },
+  "swap": {
+    "title": "兌換",
+    "youPay": "你支付",
+    "youReceive": "你收到",
+    "rate": "匯率",
+    "minReceived": "最少收到",
+    "priceImpact": "價格影響",
+    "slippage": "滑點",
+    "flip": "交換",
+    "slippageTolerance": "滑點容忍度",
+    "enterAmount": "請輸入數量",
+    "selectToken": "選擇代幣",
+    "insufficientBalance": "餘額不足",
+    "fetchingQuote": "獲取報價中…",
+    "confirming": "確認中…",
+    "approve": "授權 {{symbol}}",
+    "noRoute": "找不到此交易對的路徑",
+    "confirmed": "兌換成功"
+  },
+  "liquidity": {
+    "title": "添加流動性",
+    "tokenA": "代幣 A",
+    "tokenB": "代幣 B",
+    "add": "添加流動性",
+    "selectTokens": "選擇代幣",
+    "checkingPool": "檢查資金池中…",
+    "poolReserves": "資金池儲備",
+    "yourShareAfter": "添加後你的資金池佔比",
+    "poolNotExists": "此資金池尚未存在 — 你將是第一個創建它的人。",
+    "yourLiquidity": "你的流動性",
+    "remove": "移除",
+    "removeConfirm": "移除",
+    "yourPoolShare": "你的資金池佔比：",
+    "removing": "移除 {{pair}}",
+    "connectPrompt": "連接你的錢包以查看流動性持倉。",
+    "noPositions": "你在這條鏈上還沒有任何流動性持倉。",
+    "added": "流動性已添加",
+    "removed": "流動性已移除"
+  },
+  "toast": {
+    "approving": "授權 {{symbol}} 中…",
+    "approved": "已授權 {{symbol}}",
+    "swapping": "兌換中…",
+    "txFailed": "交易失敗",
+    "addPending": "添加流動性中…",
+    "removePending": "移除流動性中…",
+    "approveLp": "授權 LP 代幣中…",
+    "lpApproved": "LP 代幣已授權"
+  },
+  "theme": {
+    "light": "淺色",
+    "dark": "深色",
+    "system": "跟隨系統"
+  }
+}

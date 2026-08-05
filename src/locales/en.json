@@ -1,0 +1,87 @@
+{
+  "brand": {
+    "tagline": "Swap & Liquidity"
+  },
+  "nav": {
+    "home": "Home",
+    "swap": "Swap",
+    "liquidity": "Liquidity"
+  },
+  "bottomNav": {
+    "home": "Home",
+    "swap": "Swap",
+    "liquidity": "Liquidity",
+    "language": "Language"
+  },
+  "common": {
+    "select": "Select",
+    "connectWallet": "Connect Wallet",
+    "disconnect": "Disconnect",
+    "copyAddress": "Copy address",
+    "copied": "Copied",
+    "switchNetwork": "Switch Network",
+    "connecting": "Connecting…",
+    "search": "Search name or paste address",
+    "noTokensFound": "No tokens found",
+    "max": "MAX",
+    "balance": "Balance:",
+    "viewExplorer": "View on explorer",
+    "settings": "Settings",
+    "close": "Close",
+    "connectedWallet": "Connected Wallet"
+  },
+  "swap": {
+    "title": "Swap",
+    "youPay": "You pay",
+    "youReceive": "You receive",
+    "rate": "Rate",
+    "minReceived": "Minimum received",
+    "priceImpact": "Price impact",
+    "slippage": "Slippage",
+    "flip": "Flip",
+    "slippageTolerance": "Slippage tolerance",
+    "enterAmount": "Enter an amount",
+    "selectToken": "Select a token",
+    "insufficientBalance": "Insufficient balance",
+    "fetchingQuote": "Fetching quote…",
+    "confirming": "Confirming…",
+    "approve": "Approve {{symbol}}",
+    "noRoute": "No route found for this pair",
+    "confirmed": "Swap confirmed"
+  },
+  "liquidity": {
+    "title": "Add Liquidity",
+    "tokenA": "Token A",
+    "tokenB": "Token B",
+    "add": "Add Liquidity",
+    "selectTokens": "Select tokens",
+    "checkingPool": "Checking pool…",
+    "poolReserves": "Pool reserves",
+    "yourShareAfter": "Your pool share after",
+    "poolNotExists": "This pool doesn’t exist yet — you’ll be the first to create it.",
+    "yourLiquidity": "Your Liquidity",
+    "remove": "Remove",
+    "removeConfirm": "Remove",
+    "yourPoolShare": "Your pool share:",
+    "removing": "Remove {{pair}}",
+    "connectPrompt": "Connect your wallet to view your liquidity positions.",
+    "noPositions": "You have no liquidity positions on this chain yet.",
+    "added": "Liquidity added",
+    "removed": "Liquidity removed"
+  },
+  "toast": {
+    "approving": "Approving {{symbol}}…",
+    "approved": "Approved {{symbol}}",
+    "swapping": "Swapping…",
+    "txFailed": "Transaction failed",
+    "addPending": "Adding liquidity…",
+    "removePending": "Removing liquidity…",
+    "approveLp": "Approving LP token…",
+    "lpApproved": "LP approved"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  }
+}
