@@ -35,7 +35,7 @@ export const FACTORY_SECONDARY: Record<number, `0x${string}`> = {
 // Trading fee charged by the pair, in basis points. PancakeSwap V2 charges
 // 0.25% (25 bps). Must match the deployed router's pair fee — adjust if your
 // contract uses a different rate.
-export const SWAP_FEE_BPS = 20;
+export const SWAP_FEE_BPS = 25;
 
 // export const INIT_CODE_HASH: Record<number, `0x${string}`> = {
 //   [bsc.id]: "0xabf1a15b25423c3c7d89913e6a871fe5fa766a3d719a701e27b568ff7145bf18",
