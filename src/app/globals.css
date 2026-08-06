@@ -229,3 +229,79 @@ body::before {
   width: 30px;
 }
 
+/* Custom range slider for remove-liquidity percentage selector */
+.remove-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+  --pct: 0%;
+}
+
+.remove-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    #f5c542 0%,
+    #f8d259 var(--pct, 0%),
+    var(--input-bg) var(--pct, 0%),
+    var(--input-bg) 100%
+  );
+}
+
+.remove-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 22px;
+  width: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f5c542 0%, #e8b923 100%);
+  box-shadow: 0 0 0 4px rgba(245, 197, 66, 0.25), 0 4px 12px rgba(0, 0, 0, 0.3);
+  margin-top: -8px;
+  border: 2px solid var(--bg-elevated, #0c0d14);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  cursor: grab;
+}
+
+.remove-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 6px rgba(245, 197, 66, 0.35), 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.remove-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+}
+
+.remove-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--input-bg);
+}
+
+.remove-slider::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f5c542 0%, #e8b923 100%);
+}
+
+.remove-slider::-moz-range-thumb {
+  height: 22px;
+  width: 22px;
+  border: 2px solid var(--bg-elevated, #0c0d14);
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f5c542 0%, #e8b923 100%);
+  box-shadow: 0 0 0 4px rgba(245, 197, 66, 0.25), 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  cursor: grab;
+}
+
+.remove-slider::-moz-range-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 6px rgba(245, 197, 66, 0.35), 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+

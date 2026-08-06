@@ -31,10 +31,14 @@ export function TokenLogo({
   const localSrc = `/images/symbol/${token.symbol.toLowerCase()}.png`;
 
   const candidates = useMemo(() => {
-    const list: string[] = [];
+    // Local high-res PNGs are controlled by us and are the sharpest source, so
+    // they take priority. Remote logoURI is kept only as a fallback for tokens
+    // we don't ship a local asset for, and the generated SVG badge is the last
+    // resort. (Previously remote was first, which served a 96px image and made
+    // the local 192px file look blurry when upscaled.)
+    const list: string[] = [localSrc];
     const uri = token.logoURI?.trim();
     if (uri) list.push(uri);
-    list.push(localSrc);
     return list;
   }, [token.logoURI, localSrc]);
 

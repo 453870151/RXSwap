@@ -40,6 +40,11 @@ function Spinner({ className }: { className?: string }) {
   );
 }
 
+function shorten(addr: string): string {
+  if (addr.length <= 12) return addr;
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
 export function TokenSelectModal({
   open,
   chainId,
@@ -174,6 +179,12 @@ export function TokenSelectModal({
                   <div className="font-semibold">{tk.symbol}</div>
                   <div className="truncate text-xs text-[var(--text-muted)]">
                     {tk.name}
+                    {!tk.isNative && (
+                      <span className="opacity-60">
+                        {" "}
+                        ({shorten(tk.address)})
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="shrink-0">

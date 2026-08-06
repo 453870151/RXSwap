@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { useAccount, usePublicClient } from "wagmi";
 import { maxUint256 } from "viem";
 import { bsc } from "wagmi/chains";
@@ -12,6 +14,7 @@ import { TokenLogo } from "./TokenLogo";
 import { formatAmount } from "@/lib/format";
 import { computeMinAmountOut } from "@/lib/swap";
 import { getChainMeta } from "@/config/chains";
+import { getLiquidityAddedAt } from "@/lib/recentLiquidity";
 import { ERC20_ABI } from "@/config/abis/erc20";
 import { getRouterAddresses } from "@/config/contracts";
 import { useTranslation } from "./LanguageProvider";
@@ -20,74 +23,116 @@ const PCTS = [25, 50, 75, 100];
 
 export function LiquidityList() {
   const { t } = useTranslation();
+  const router = useRouter();
   const { address, isConnected, chainId: connectedChain } = useAccount();
   const chainId = connectedChain ?? bsc.id;
   const { data: positions, isLoading, refetch } = useLiquidityPositions(address, chainId);
   const [removing, setRemoving] = useState<LiquidityPosition | null>(null);
 
+  // Surface pairs the user most-recently added at the top. Positions with a
+  // recorded add-time sort newest-first; older positions (added before this
+  // tracking existed) keep their natural order below.
+  const sortedPositions = useMemo(() => {
+    if (!positions) return positions;
+    const withTime = positions.map((p) => ({
+      p,
+      at: getLiquidityAddedAt(chainId, p.pair),
+    }));
+    withTime.sort((x, y) => {
+      if (x.at > 0 && y.at > 0) return y.at - x.at; // newest first
+      if (x.at > 0) return -1; // recorded always above unrecorded
+      if (y.at > 0) return 1;
+      return 0; // keep original order for unrecorded
+    });
+    return withTime.map((w) => w.p);
+  }, [positions, chainId]);
+
+  function AddHeader() {
+    return (
+      <div className="flex w-full max-w-md items-center justify-between px-1">
+        <h2 className="text-lg font-bold">{t("liquidity.yourLiquidity")}</h2>
+        <button
+          onClick={() => router.push("/liquidity/add?step=1")}
+          className="btn-primary rounded-full px-4 py-2 text-sm font-semibold"
+        >
+          + {t("liquidity.add")}
+        </button>
+      </div>
+    );
+  }
+
   if (!isConnected) {
     return (
-      <div className="glass w-full max-w-md animate-fade-up rounded-3xl p-8 text-center">
-        <p className="text-[var(--text-muted)]">{t("liquidity.connectPrompt")}</p>
-      </div>
+      <>
+        <AddHeader />
+        <div className="glass w-full max-w-md animate-fade-up rounded-3xl p-8 text-center">
+          <p className="text-[var(--text-muted)]">{t("liquidity.connectPrompt")}</p>
+        </div>
+      </>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="glass w-full max-w-md animate-fade-up rounded-3xl p-8">
-        <div className="shimmer h-4 w-1/2 rounded bg-[var(--input-bg)]" />
-        <div className="shimmer mt-3 h-16 w-full rounded-2xl bg-[var(--input-bg)]" />
-      </div>
+      <>
+        <AddHeader />
+        <div className="glass w-full max-w-md animate-fade-up rounded-3xl p-8">
+          <div className="shimmer h-4 w-1/2 rounded bg-[var(--input-bg)]" />
+          <div className="shimmer mt-3 h-16 w-full rounded-2xl bg-[var(--input-bg)]" />
+        </div>
+      </>
     );
   }
 
   if (!positions || positions.length === 0) {
     return (
-      <div className="glass w-full max-w-md animate-fade-up rounded-3xl p-8 text-center">
-        <p className="text-[var(--text-muted)]">
-          {t("liquidity.noPositions")}
-        </p>
-      </div>
+      <>
+        <AddHeader />
+        <div className="glass w-full max-w-md animate-fade-up rounded-3xl p-8 text-center">
+          <p className="text-[var(--text-muted)]">{t("liquidity.noPositions")}</p>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="w-full max-w-md space-y-3 animate-fade-up">
-      <h2 className="px-1 text-lg font-bold">{t("liquidity.yourLiquidity")}</h2>
-      {positions.map((p) => (
-        <div key={p.pair} className="glass rounded-3xl p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex -space-x-2">
-                <TokenLogo token={p.tokenA} size={30} />
-                <TokenLogo token={p.tokenB} size={30} />
+    <>
+      <AddHeader />
+      <div className="w-full max-w-md space-y-3 animate-fade-up">
+        {sortedPositions?.map((p) => (
+          <div key={p.pair} className="glass rounded-3xl p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex -space-x-2">
+                  <TokenLogo token={p.tokenA} size={30} />
+                  <TokenLogo token={p.tokenB} size={30} />
+                </div>
+                <span className="font-semibold">
+                  {p.tokenA.symbol} / {p.tokenB.symbol}
+                </span>
               </div>
-              <span className="font-semibold">
-                {p.tokenA.symbol} / {p.tokenB.symbol}
-              </span>
+              <button
+                onClick={() => setRemoving(p)}
+                className="rounded-full bg-[var(--input-bg)] px-4 py-1.5 text-sm font-semibold transition hover:bg-[var(--hover)]"
+              >
+                {t("liquidity.remove")}
+              </button>
             </div>
-            <button
-              onClick={() => setRemoving(p)}
-              className="rounded-full bg-[var(--input-bg)] px-4 py-1.5 text-sm font-semibold transition hover:bg-[var(--hover)]"
-            >
-              {t("liquidity.remove")}
-            </button>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <PoolStat token={p.tokenA} amount={p.amountA} />
+              <PoolStat token={p.tokenB} amount={p.amountB} />
+            </div>
+            <div className="mt-2 text-xs text-[var(--text-muted)]">
+              {t("liquidity.yourPoolShare")} <span className="font-semibold text-[var(--text)]">{(p.share * 100).toFixed(4)}%</span>
+            </div>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-            <PoolStat token={p.tokenA} amount={p.amountA} />
-            <PoolStat token={p.tokenB} amount={p.amountB} />
-          </div>
-          <div className="mt-2 text-xs text-[var(--text-muted)]">
-            {t("liquidity.yourPoolShare")} <span className="font-semibold text-[var(--text)]">{(p.share * 100).toFixed(4)}%</span>
-          </div>
-        </div>
-      ))}
+        ))}
 
-      {removing && (
-        <RemoveModal position={removing} onClose={() => setRemoving(null)} onDone={() => { setRemoving(null); refetch(); }} chainId={chainId} />
-      )}
-    </div>
+        {removing && (
+          <RemoveModal position={removing} onClose={() => setRemoving(null)} onDone={() => { setRemoving(null); refetch(); }} chainId={chainId} />
+        )}
+      </div>
+    </>
   );
 }
 
@@ -117,11 +162,23 @@ function RemoveModal({
   const { t } = useTranslation();
   const publicClient = usePublicClient({ chainId });
   const { address: address_ } = useAccount();
-  const { toast, update } = useToast();
+  const { toast } = useToast();
   const { approve } = useApprove();
   const { removeLiquidity, isPending } = useRemoveLiquidity();
   const [pct, setPct] = useState(100);
   const [busy, setBusy] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  // Close on Escape (unless a transaction is in flight).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !busy) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, busy]);
 
   const router = getRouterAddresses(chainId).primary;
   const liquidity = useMemo(
@@ -133,23 +190,36 @@ function RemoveModal({
   const minA = computeMinAmountOut(amtA, 50);
   const minB = computeMinAmountOut(amtB, 50);
 
-  async function handleRemove() {
-    if (!publicClient || !address_) return;
-    setBusy(true);
-    try {
-      const allowance = (await publicClient.readContract({
+  // LP token (the pair contract) needs approval before removal if the router
+  // isn't already allowed the full amount. Mirrors the add-liquidity stepwise
+  // flow: button reads "授权" until approved, then "移除".
+  const [needsApproval, setNeedsApproval] = useState(false);
+  useEffect(() => {
+    if (!publicClient || !address_ || liquidity <= 0n) return;
+    publicClient
+      .readContract({
         address: position.pair,
         abi: ERC20_ABI,
         functionName: "allowance",
         args: [address_, router],
-      })) as bigint;
-      if (allowance < liquidity) {
-        const id = toast({ type: "pending", message: t("toast.approveLp") });
-        const h = await approve(position.pair, router, maxUint256);
-        await publicClient.waitForTransactionReceipt({ hash: h });
-        update(id, { type: "success", message: t("toast.lpApproved") });
+      })
+      .then((a) => setNeedsApproval((a as bigint) < liquidity))
+      .catch(() => setNeedsApproval(false));
+  }, [publicClient, address_, position.pair, router, liquidity]);
+
+  async function handleRemove() {
+    if (!publicClient || !address_ || liquidity <= 0n) return;
+    setBusy(true);
+    try {
+      // Step 1: approve the LP token if needed. No bottom toast — the modal
+      // button shows an in-modal spinner ("授权中").
+      if (needsApproval) {
+        await approve(position.pair, router, maxUint256);
+        setNeedsApproval(false);
+        return;
       }
-      const id = toast({ type: "pending", message: t("toast.removePending") });
+      // Step 2: remove liquidity. Success surfaces as a top-right notification
+      // (matches the Swap / add-liquidity pages); no bottom toast is shown.
       const h = await removeLiquidity({
         tokenA: position.tokenA,
         tokenB: position.tokenB,
@@ -161,8 +231,9 @@ function RemoveModal({
       });
       await publicClient.waitForTransactionReceipt({ hash: h });
       const meta = getChainMeta(chainId);
-      update(id, {
+      toast({
         type: "success",
+        position: "top-right",
         message: (
           <a href={`${meta?.explorer}/tx/${h}`} target="_blank" rel="noreferrer" className="underline">
             {t("liquidity.removed")} · {t("common.viewExplorer")}
@@ -171,18 +242,31 @@ function RemoveModal({
       });
       onDone();
     } catch (e: any) {
-      toast({ type: "error", message: e?.shortMessage || e?.message || t("toast.txFailed") });
+      // Wallet rejection or failure: keep the modal open for retry; surface a
+      // top-right error instead of a lingering bottom toast.
+      toast({
+        type: "error",
+        position: "top-right",
+        message: e?.shortMessage || e?.message || t("toast.txFailed"),
+      });
     } finally {
       setBusy(false);
     }
   }
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center"
-      onClick={onClose}
+      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/20 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      onClick={() => {
+        if (!busy) onClose();
+      }}
     >
-      <div className="glass w-full max-w-md animate-fade-up rounded-3xl p-5" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="glass w-full max-w-md animate-fade-up rounded-t-3xl p-5 sm:rounded-3xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-bold">
             {t("liquidity.removing", { pair: `${position.tokenA.symbol} / ${position.tokenB.symbol}` })}
@@ -197,6 +281,19 @@ function RemoveModal({
             <TokenLogo token={position.tokenA} size={40} />
             <TokenLogo token={position.tokenB} size={40} />
           </div>
+        </div>
+
+        <div className="mb-4">
+          <div className="mb-2 text-3xl font-bold text-[#f5c542]">{pct}%</div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={pct}
+            onChange={(e) => setPct(Number(e.target.value))}
+            className="remove-slider"
+            style={{ "--pct": `${pct}%` } as React.CSSProperties}
+          />
         </div>
 
         <div className="mb-4 grid grid-cols-4 gap-2">
@@ -228,11 +325,42 @@ function RemoveModal({
         <button
           onClick={handleRemove}
           disabled={busy || isPending || liquidity <= 0n}
-          className="btn-primary w-full rounded-2xl py-3.5 text-base font-bold"
+          className="btn-primary mt-5 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-bold disabled:opacity-70"
         >
-          {busy || isPending ? t("swap.confirming") : t("liquidity.removeConfirm")}
+          {busy ? (
+            <>
+              <svg
+                className="h-4 w-4 animate-spin"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+              {needsApproval
+                ? t("liquidity.authorizingLp")
+                : t("swap.confirmInWallet")}
+            </>
+          ) : needsApproval ? (
+            t("liquidity.authorizeLp")
+          ) : (
+            t("liquidity.removeConfirm")
+          )}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

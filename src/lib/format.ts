@@ -13,6 +13,29 @@ export function formatAmount(
   return trimmedFrac ? `${intPart}.${trimmedFrac}` : intPart;
 }
 
+/**
+ * Adaptive balance formatter: normal/large amounts show 2 decimals (with
+ * thousands separators); very small amounts keep up to 5 fraction digits so a
+ * dust balance isn't rounded down to "0.00".
+ * Truncation only — never rounds (四舍五入). e.g. 125.127213 -> "125.12",
+ * 1250.5 -> "1,250.50", 0.0004578 -> "0.00045".
+ */
+export function formatBalance(value: bigint, decimals: number): string {
+  if (value <= 0n) return "0";
+  const full = formatUnits(value, decimals);
+  const [intPart, frac = ""] = full.split(".");
+  if (Number(intPart) >= 1 || intPart !== "0") {
+    // Large/normal amount: truncate (NOT round) to 2 decimals so the displayed
+    // balance never exceeds the real balance.
+    const two = (frac + "00").slice(0, 2);
+    const intFmt = Number(intPart).toLocaleString("en-US");
+    return `${intFmt}.${two}`;
+  }
+  // Dust amount (< 1): keep up to 5 fraction digits, trim trailing zeros.
+  const trimmed = frac.slice(0, 5).replace(/0+$/, "");
+  return trimmed ? `${intPart}.${trimmed}` : intPart;
+}
+
 /** Format a number-like string/number with thousands separators. */
 export function formatNumber(n: number, maxDigits = 4): string {
   if (!isFinite(n)) return "0";

@@ -189,3 +189,20 @@ export async function computePathPriceImpact(
   }
 }
 
+/**
+ * Integer square root of a bigint (Newton's method). Used to estimate the LP
+ * tokens minted for a brand-new pool: liquidity ≈ sqrt(amount0 · amount1) −
+ * MINIMUM_LIQUIDITY. Returns 0n when the input is 0.
+ */
+export function sqrtBigInt(value: bigint): bigint {
+  if (value < 0n) return 0n;
+  if (value < 2n) return value;
+  let x = value;
+  let y = (x + 1n) / 2n;
+  while (y < x) {
+    x = y;
+    y = (x + value / x) / 2n;
+  }
+  return x;
+}
+

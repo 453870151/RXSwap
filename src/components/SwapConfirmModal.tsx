@@ -29,6 +29,7 @@ export function SwapConfirmModal({
   activeQuote,
   effectiveSlippageBps,
   autoSlippage,
+  needsApproval,
   isBusy,
 }: {
   open: boolean;
@@ -41,6 +42,7 @@ export function SwapConfirmModal({
   activeQuote: ActiveQuote;
   effectiveSlippageBps: number;
   autoSlippage: boolean;
+  needsApproval: boolean;
   isBusy: boolean;
 }) {
   const { t } = useTranslation();
@@ -251,7 +253,7 @@ export function SwapConfirmModal({
           </div>
         </div>
 
-        {/* Confirm / Close button */}
+        {/* Confirm / Close button — stepwise: 授权 X → 确认兑换 */}
         <button
           onClick={onConfirm}
           disabled={isBusy}
@@ -279,8 +281,12 @@ export function SwapConfirmModal({
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
               />
               </svg>
-              {t("swap.confirmInWallet")}
+              {needsApproval
+                ? t("swap.approvingPlain")
+                : t("swap.confirmInWallet")}
             </>
+          ) : needsApproval ? (
+            t("swap.approve", { symbol: tokenIn.symbol })
           ) : (
             t("swap.confirmSwap")
           )}

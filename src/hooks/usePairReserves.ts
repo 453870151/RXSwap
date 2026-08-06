@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
 import type { SwapToken } from "@/config/tokens";
-import { getFactoryAddresses } from "@/config/contracts";
+import { getFactoryAddresses, WNATIVE } from "@/config/contracts";
 import { FACTORY_ABI } from "@/config/abis/factory";
 import { PAIR_ABI } from "@/config/abis/pair";
 import { parseUnits } from "viem";
@@ -36,12 +36,20 @@ export function usePairReserves(
       if (!publicClient || !tokenA || !tokenB || !chainId)
         return empty();
       const { primary: factory } = getFactoryAddresses(chainId);
+      // PancakeSwap V2 pairs only hold ERC-20 tokens; a native coin (e.g. tBNB)
+      // is wrapped as WNATIVE on chain, so we must query getPair with the
+      // wrapped address, not the zero-address placeholder used by the UI.
+      const wnative = WNATIVE[chainId];
+      const addrA =
+        tokenA.isNative && wnative ? (wnative as Address) : tokenA.address;
+      const addrB =
+        tokenB.isNative && wnative ? (wnative as Address) : tokenB.address;
       const pair = (await publicClient
         .readContract({
           address: factory,
           abi: FACTORY_ABI,
           functionName: "getPair",
-          args: [tokenA.address, tokenB.address],
+          args: [addrA, addrB],
         })
         .catch(() => ZERO)) as Address;
       if (!pair || pair === ZERO) return empty();
@@ -68,14 +76,18 @@ export function usePairReserves(
           functionName: "token1",
         }),
       ]);
+      // Map the wrapped-native address back to the zero-address placeholder so
+      // downstream comparisons (tokenA.address === reserve.token0) keep matching.
+      const mapNative = (a: Address): Address =>
+        wnative && a.toLowerCase() === wnative.toLowerCase() ? ZERO : a;
       const [reserve0, reserve1] = reserves as [bigint, bigint, number];
       return {
         exists: true,
         pair,
         reserve0,
         reserve1,
-        token0: t0 as Address,
-        token1: t1 as Address,
+        token0: mapNative(t0 as Address),
+        token1: mapNative(t1 as Address),
         totalSupply: totalSupply as bigint,
       };
     },

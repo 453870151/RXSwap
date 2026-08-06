@@ -336,29 +336,43 @@ export function SwapCard() {
     setTypedValue(formatAmount(balanceOut, tokenOut.decimals));
   }
 
-  async function handleAction() {
+  // Approve the sold token (tokenIn) for the router. Driven by the confirm
+  // modal button when the user still needs to grant allowance. After the
+  // receipt lands we refetch the allowance so the button flips to "确认兑换".
+  async function approveTokenIn() {
+    if (!tokenIn || !publicClient || tokenIn.isNative || payWei <= 0n || allowance >= payWei) return;
+    setBusy(true);
+    const router = getRouterAddresses(chainId).primary;
+    try {
+      const h = await approve(tokenIn.address, router, maxUint256);
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: h,
+        timeout: 180_000,
+      });
+      if (receipt.status !== "success") {
+        // On-chain execution reverted — not a valid approval.
+        queryClient.invalidateQueries({ queryKey: ["balance", chainId] });
+        return;
+      }
+      // Approval is a transaction too — refresh the allowance so the "授权"
+      // button flips to "确认兑换", and refresh balances.
+      await refetchAllowance();
+      queryClient.invalidateQueries({ queryKey: ["balance", chainId] });
+    } catch {
+      // Wallet rejection or other error — swallow. The modal stays open with
+      // the button reset, so the user can retry directly.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doSwap() {
     if (!tokenIn || !tokenOut || !address || !publicClient) return;
     if (unsupportedChain) return;
     if (payWei <= 0n) return;
     setBusy(true);
     const router = getRouterAddresses(chainId).primary;
     try {
-      if (needsApproval) {
-        const h = await approve(tokenIn.address, router, maxUint256);
-        const receipt = await publicClient.waitForTransactionReceipt({
-          hash: h,
-          timeout: 180_000,
-        });
-        if (receipt.status !== "success") {
-          // On-chain execution reverted — not a valid approval.
-          queryClient.invalidateQueries({ queryKey: ["balance", chainId] });
-          return;
-        }
-        // Approval is a transaction too — refresh the allowance so the "授权"
-        // button flips back to "兑换", and refresh balances.
-        await refetchAllowance();
-        queryClient.invalidateQueries({ queryKey: ["balance", chainId] });
-      }
       const q = activeQuote;
       if (!q) {
         return;
@@ -420,6 +434,17 @@ export function SwapCard() {
     }
   }
 
+  // The confirm modal's single action button dispatches the next pending step:
+  // approve tokenIn, then swap. Each click performs exactly one on-chain
+  // action; the button label reflects the current step (授权 X → 确认兑换).
+  function onConfirmDispatch() {
+    if (needsApproval) {
+      approveTokenIn();
+      return;
+    }
+    doSwap();
+  }
+
   let buttonLabel = t("swap.title");
   let disabled = false;
   if (!isConnected)
@@ -450,8 +475,6 @@ export function SwapCard() {
   } else if (insufficient) {
     buttonLabel = t("swap.insufficientBalance", { symbol: tokenIn?.symbol ?? "" });
     disabled = true;
-  } else if (needsApproval) {
-    buttonLabel = t("swap.approve", { symbol: tokenIn.symbol });
   } else if (busy || swapping) {
     buttonLabel = t("swap.confirming");
     disabled = true;
@@ -628,13 +651,9 @@ export function SwapCard() {
             connect({ connector: connectors[0] });
             return;
           }
-          // Approval is a prerequisite, not a swap — execute it directly.
-          // For the actual swap, show a secondary confirmation modal first.
-          if (needsApproval) {
-            handleAction();
-          } else {
-            setShowConfirm(true);
-          }
+          // Both approval and swap happen inside the confirm modal's stepwise
+          // action button (授权 X → 确认兑换), so always open it first.
+          setShowConfirm(true);
         }}
         disabled={disabled}
         className="btn-primary mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-bold"
@@ -753,7 +772,7 @@ export function SwapCard() {
           open={showConfirm}
           onClose={() => setShowConfirm(false)}
           onConfirm={() => {
-            handleAction();
+            onConfirmDispatch();
           }}
           tokenIn={tokenIn}
           tokenOut={tokenOut}
@@ -762,6 +781,7 @@ export function SwapCard() {
           activeQuote={activeQuote}
           effectiveSlippageBps={effectiveSlippageBps}
           autoSlippage={autoSlippage}
+          needsApproval={needsApproval}
           isBusy={busy || swapping}
         />
       )}

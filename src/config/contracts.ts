@@ -7,26 +7,28 @@ import { bsc, bscTestnet } from "wagmi/chains";
  * kept as separate PRIMARY / SECONDARY fields so the fallback can be enabled
  * later just by editing SECONDARY.
  */
-// 主路由
+// 主路由 Router V2
 export const ROUTER_PRIMARY: Record<number, `0x${string}`> = {
   [bsc.id]: "0x10ED43C718714eb63d5aA57B78B54704E256024E",
   [bscTestnet.id]: "0xE22EaFbe4F57973Aad2de67071A751214bFB4461",
 };
 
-export const ROUTER_SECONDARY: Record<number, `0x${string}`> = {
-  [bsc.id]: "0xA40d547d3A3B835D6DeA72A95384F076d2c58301",
-  [bscTestnet.id]: "0xE22EaFbe4F57973Aad2de67071A751214bFB4461",
-};
-
-// 次路由
+// 主路由 Factory V2
 export const FACTORY_PRIMARY: Record<number, `0x${string}`> = {
   [bsc.id]: "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73",
   [bscTestnet.id]: "0x2096C39c76526FE9468043251043dee5964Ee134",
 };
 
+// 次路由 Router V2
+export const ROUTER_SECONDARY: Record<number, `0x${string}`> = {
+  [bsc.id]: "0xA40d547d3A3B835D6DeA72A95384F076d2c58301",
+  [bscTestnet.id]: "0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3",
+};
+
+// 次路由 Factory V2
 export const FACTORY_SECONDARY: Record<number, `0x${string}`> = {
   [bsc.id]: "0xCe075f468410061772698f6f22AC0e6512875C56",
-  [bscTestnet.id]: "0x2096C39c76526FE9468043251043dee5964Ee134",
+  [bscTestnet.id]: "0xB7926C0430Afb07AA7DEfDE6DA862aE0Bde767bc",
 };
 
 // Pair contract init code hash (used if we ever compute pair addresses off-chain).
