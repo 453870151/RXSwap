@@ -31,6 +31,8 @@ export interface SwapQuoteOut {
   priceImpact?: number;
   /** Effective slippage used for amountInMax (auto or manual). */
   slippageBps: number;
+  /** Router that produced this quote (primary or secondary). */
+  router: Address;
 }
 
 interface QuoteOutParams {
@@ -100,7 +102,7 @@ async function quoteWithRouterOut(
           path,
           amounts as readonly bigint[]
         );
-        best = { amountIn: inWei, amountInMax: inWei, path, rate, priceImpact };
+        best = { amountIn: inWei, amountInMax: inWei, path, rate, priceImpact, router };
       }
     } catch {
       // path not tradeable through this router
@@ -159,18 +161,21 @@ export function useSwapQuoteOut({
         chainId as number
       );
 
-      let quote =
-        (await quoteWithRouterOut(
-          publicClient,
-          routerP,
-          factoryP,
-          wnative,
-          tokenIn,
-          tokenOut,
-          amountOutWei,
-          chainId as number
-        )) ??
-        (routerS !== routerP
+      // Query both routers and pick the one requiring the least input. If the
+      // primary pair has been almost drained, its required input can spike; we
+      // must not prefer it over a healthy secondary pair.
+      const quoteP = await quoteWithRouterOut(
+        publicClient,
+        routerP,
+        factoryP,
+        wnative,
+        tokenIn,
+        tokenOut,
+        amountOutWei,
+        chainId as number
+      );
+      const quoteS =
+        routerS !== routerP
           ? await quoteWithRouterOut(
               publicClient,
               routerS,
@@ -181,7 +186,12 @@ export function useSwapQuoteOut({
               amountOutWei,
               chainId as number
             )
-          : null);
+          : null;
+
+      let quote: Omit<SwapQuoteOut, "slippageBps"> | null = quoteP ?? quoteS;
+      if (quoteS && quoteP) {
+        quote = quoteS.amountIn < quoteP.amountIn ? quoteS : quoteP;
+      }
 
       if (!quote) return null;
 

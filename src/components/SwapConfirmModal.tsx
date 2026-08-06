@@ -9,6 +9,7 @@ import {
   priceImpactColor,
 } from "@/lib/format";
 import type { SwapToken } from "@/config/tokens";
+import { SWAP_FEE_BPS } from "@/config/contracts";
 import { TokenLogo } from "./TokenLogo";
 import { useTranslation } from "./LanguageProvider";
 
@@ -213,6 +214,16 @@ export function SwapConfirmModal({
               style={impactColor ? { color: impactColor } : undefined}
             >
               {formatPriceImpact(priceImpact)}
+            </span>
+          </div>
+
+          {/* Trading fee */}
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--text-muted)]">
+              {t("swap.tradingFee")}
+            </span>
+            <span className="font-medium">
+              {formatSlippage(SWAP_FEE_BPS)}%
             </span>
           </div>
 

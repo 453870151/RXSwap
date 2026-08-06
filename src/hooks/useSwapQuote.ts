@@ -29,6 +29,8 @@ export interface SwapQuote {
   priceImpact?: number;
   /** Effective slippage used for amountOutMin (auto or manual). */
   slippageBps: number;
+  /** Router that produced this quote (primary or secondary). */
+  router: Address;
 }
 
 interface QuoteParams {
@@ -95,7 +97,7 @@ async function quoteWithRouter(
           path,
           amounts as readonly bigint[]
         );
-        best = { amountOut: out, amountOutMin: minOut, path, rate, priceImpact };
+        best = { amountOut: out, amountOutMin: minOut, path, rate, priceImpact, router };
       }
     } catch {
       // path not tradeable through this router
@@ -156,19 +158,21 @@ export function useSwapQuote({
         chainId as number
       );
 
-      // Primary router first; fall back to secondary if no tradeable path.
-      let quote =
-        (await quoteWithRouter(
-          publicClient,
-          routerP,
-          factoryP,
-          wnative,
-          tokenIn,
-          tokenOut,
-          amountInWei,
-          chainId as number
-        )) ??
-        (routerS !== routerP
+      // Query both routers and pick the best output. If the primary pair has
+      // been almost drained, its output can be near-zero; we must not blindly
+      // prefer it over a healthy secondary pair.
+      const quoteP = await quoteWithRouter(
+        publicClient,
+        routerP,
+        factoryP,
+        wnative,
+        tokenIn,
+        tokenOut,
+        amountInWei,
+        chainId as number
+      );
+      const quoteS =
+        routerS !== routerP
           ? await quoteWithRouter(
               publicClient,
               routerS,
@@ -179,7 +183,12 @@ export function useSwapQuote({
               amountInWei,
               chainId as number
             )
-          : null);
+          : null;
+
+      let quote: Omit<SwapQuote, "slippageBps"> | null = quoteP ?? quoteS;
+      if (quoteS && quoteP) {
+        quote = quoteS.amountOut > quoteP.amountOut ? quoteS : quoteP;
+      }
 
       if (!quote) return null;
 

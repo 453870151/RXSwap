@@ -14,7 +14,7 @@ import {
   getDefaultTokenOut,
   type SwapToken,
 } from "@/config/tokens";
-import { getRouterAddresses, WNATIVE } from "@/config/contracts";
+import { getRouterAddresses, WNATIVE, SWAP_FEE_BPS } from "@/config/contracts";
 import { useSwapQuote } from "@/hooks/useSwapQuote";
 import { useSwapQuoteOut } from "@/hooks/useSwapQuoteOut";
 import { useTokenBalance } from "@/hooks/useTokenBalance";
@@ -185,12 +185,17 @@ export function SwapCard() {
     chainId,
   });
 
+  // The router that produced the active quote drives both the allowance check
+  // and the on-chain calls below, so an order routed through the secondary
+  // router is approved against and executed on that router — not the primary.
+  const activeQuote = isExactOut ? reverseQuote.data : forwardQuote.data;
+
   const { data: balanceIn } = useTokenBalance(tokenIn, address, chainId);
   const { data: balanceOut } = useTokenBalance(tokenOut, address, chainId);
   const { allowance, refetch: refetchAllowance } = useTokenAllowance(
     tokenIn,
     address,
-    tokenIn && getRouterAddresses(chainId).primary,
+    tokenIn && (activeQuote?.router ?? getRouterAddresses(chainId).primary),
     chainId
   );
 
@@ -221,7 +226,6 @@ export function SwapCard() {
     ? amountOutWei
     : forwardQuote.data?.amountOutMin ?? 0n;
 
-  const activeQuote = isExactOut ? reverseQuote.data : forwardQuote.data;
   // True only on the very first fetch (no data yet). Background polling
   // refetches keep `data` (via keepPreviousData) and are NOT `isLoading`,
   // so we drive the spinner / card-hide off `isLoading` to avoid flicker
@@ -342,7 +346,7 @@ export function SwapCard() {
   async function approveTokenIn() {
     if (!tokenIn || !publicClient || tokenIn.isNative || payWei <= 0n || allowance >= payWei) return;
     setBusy(true);
-    const router = getRouterAddresses(chainId).primary;
+    const router = activeQuote?.router ?? getRouterAddresses(chainId).primary;
     try {
       const h = await approve(tokenIn.address, router, maxUint256);
       const receipt = await publicClient.waitForTransactionReceipt({
@@ -371,7 +375,7 @@ export function SwapCard() {
     if (unsupportedChain) return;
     if (payWei <= 0n) return;
     setBusy(true);
-    const router = getRouterAddresses(chainId).primary;
+    const router = activeQuote?.router ?? getRouterAddresses(chainId).primary;
     try {
       const q = activeQuote;
       if (!q) {
@@ -729,6 +733,10 @@ export function SwapCard() {
                   ? priceImpactColor(activeQuote.priceImpact)
                   : undefined
               }
+            />
+            <Row
+              label={t("swap.tradingFee")}
+              value={`${formatSlippage(SWAP_FEE_BPS)}%`}
             />
 
             {/* Swap route: BNB → USDT (direct) or BNB → BNB → USDT (via wrapped, shown as BNB) */}
