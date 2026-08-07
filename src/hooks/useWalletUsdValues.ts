@@ -165,8 +165,12 @@ export function useWalletUsdValues(
  * amount (normalized to a plain number) — i.e. the USD value of that balance.
  * Reuses the swap auto-router so indirect routes (e.g. Token2 -> Token1 -> USDT)
  * are discovered. Returns null when no tradeable path exists through this router.
+ *
+ * Exported so other modules (e.g. `useAllPools` TVL pricing) can price any
+ * token by passing `amountInWei = 10^decimals` (one whole token) to read its
+ * spot USD price.
  */
-async function valueToStable(
+export async function valueToStable(
   publicClient: any,
   router: Address,
   factory: Address,

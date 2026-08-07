@@ -52,11 +52,11 @@ export function LiquidityAdd() {
   const step = searchParams.get("step") === "2" ? 2 : 1;
   const curA = searchParams.get("currencyA");
   const curB = searchParams.get("currencyB");
-  // Defaults when no URL param is supplied: Token A is the chain's native coin
-  // (BNB / tBNB), Token B is left unselected so the user picks it explicitly.
-  // A URL param that fails to resolve still stays `undefined` (handled by the
-  // guard / redirect below).
-  const tokenA = curA ? resolveToken(chainId, curA) : getNativeToken(chainId);
+  // Defaults when no URL param is supplied: neither side is pre-selected, so the
+  // user explicitly picks both tokens (Token A no longer defaults to the
+  // chain's native coin). A URL param that fails to resolve stays `undefined`
+  // (handled by the guard / redirect below).
+  const tokenA = curA ? resolveToken(chainId, curA) : undefined;
   const tokenB = curB ? resolveToken(chainId, curB) : undefined;
 
   const [amountA, setAmountA] = useState("");

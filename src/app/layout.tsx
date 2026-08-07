@@ -55,8 +55,8 @@ export default function RootLayout({
         <Providers ssrLocale={locale}>
           <ToastProvider>
             <AppHeader />
-            <div className="relative mx-auto flex min-h-screen w-full max-w-2xl flex-col px-4 pb-20 pt-24 sm:px-6 md:pb-16 lg:pt-28">
-              <main className="flex flex-1 flex-col items-center justify-start pt-6 sm:pt-8">
+            <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 pb-20 pt-24 sm:px-6 md:pb-16 lg:pt-28">
+              <main className="flex flex-1 flex-col items-center justify-start">
                 {children}
               </main>
             </div>

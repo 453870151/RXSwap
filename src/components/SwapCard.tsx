@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useConnect, usePublicClient } from "wagmi";
 import { parseUnits, maxUint256 } from "viem";
@@ -83,8 +84,29 @@ function loadSavedSlippage(): { auto: boolean; bps: number } {
   return { auto: true, bps: 50 };
 }
 
+// Map a URL param value ("BNB" for native, an address for ERC20) back to a
+// SwapToken for the active chain. Mirrors the add-liquidity page so deep links
+// share the same currencyA / currencyB convention.
+function resolveToken(chainId: number, value?: string | null): SwapToken | undefined {
+  if (!value) return undefined;
+  const native = getNativeToken(chainId);
+  if (value.toLowerCase() === native.symbol.toLowerCase()) return native;
+  return getTokenByAddress(chainId, value as Address);
+}
+
+// Serialize a token to its URL param value: native coin → its symbol (e.g.
+// "BNB"), ERC20 → its contract address. Keeps the swap URL consistent with the
+// add-liquidity page.
+function paramValue(t?: SwapToken): string | undefined {
+  return t ? (t.isNative ? t.symbol : t.address) : undefined;
+}
+
 export function SwapCard() {
   const { t } = useTranslation();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const curA = searchParams.get("currencyA");
+  const curB = searchParams.get("currencyB");
   const { address, isConnected, chainId: connectedChain, chain } = useAccount();
   // If the connected wallet's chain is configured in the project, use it so the
   // native token becomes the default "from" token. Otherwise fall back to BSC
@@ -92,6 +114,10 @@ export function SwapCard() {
   const connectedChainSupported =
     isConnected && SUPPORTED_CHAINS.includes(connectedChain ?? -1);
   const chainId = connectedChainSupported ? (connectedChain as number) : bsc.id;
+  // Deep-linked tokens from the URL (shared convention with the add-liquidity
+  // page). If absent or unresolvable, fall back to the per-chain default pair.
+  const linkedIn = curA ? resolveToken(chainId, curA) : undefined;
+  const linkedOut = curB ? resolveToken(chainId, curB) : undefined;
   const unsupportedChain = isConnected && !connectedChainSupported;
   const publicClient = usePublicClient({ chainId });
   const { approve } = useApprove();
@@ -102,10 +128,10 @@ export function SwapCard() {
   // Seed defaults from the per-chain default pair config (DEFAULT_TOKENS) so
   // neither field flashes an empty "Select" before the effect runs.
   const [tokenIn, setTokenIn] = useState<SwapToken | undefined>(() =>
-    getDefaultTokenIn(chainId)
+    linkedIn ?? getDefaultTokenIn(chainId)
   );
   const [tokenOut, setTokenOut] = useState<SwapToken | undefined>(() =>
-    getDefaultTokenOut(chainId)
+    linkedOut ?? getDefaultTokenOut(chainId)
   );
   // Single source of truth: which field the user is editing, and the typed text.
   const [independentField, setIndependentField] = useState<"in" | "out">("in");
@@ -118,6 +144,9 @@ export function SwapCard() {
   // effective value as a placeholder instead of forcing deletion.
   const [customSlippage, setCustomSlippage] = useState("");
   const [modalSide, setModalSide] = useState<"in" | "out" | null>(null);
+  // Refs to the two amount inputs so Tab can move focus between them.
+  const inRef = useRef<HTMLInputElement>(null);
+  const outRef = useRef<HTMLInputElement>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showInverseRate, setShowInverseRate] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -156,14 +185,56 @@ export function SwapCard() {
     } catch {}
   }, [autoSlippage, slippageBps]);
 
-  // On chain switch: reset to this chain's default pair and clear the typed
-  // amount so the user starts fresh for the new pair / liquidity landscape.
+  // On chain settle / change: re-resolve the URL tokens against the *new*
+  // chainId rather than discarding them. This is essential because on first
+  // load the wallet hasn't reconnected yet, so chainId is the default (56) and
+  // a testnet deep link like currencyA=tBNB wouldn't resolve — then once the
+  // wallet reconnects to testnet (97) we must re-resolve against 97, NOT clear
+  // the URL. We only fall back to defaults and clear the stale params when the
+  // URL tokens genuinely fail to resolve on the settled chain.
+  // Tracked via prevChainRef so this only fires on a real chain change after
+  // mount (survives React StrictMode's double-invoked mount effect).
+  const prevChainRef = useRef<number | null>(null);
   useEffect(() => {
-    setTokenIn(getDefaultTokenIn(chainId));
-    setTokenOut(getDefaultTokenOut(chainId));
+    if (prevChainRef.current === null) {
+      prevChainRef.current = chainId;
+      return;
+    }
+    if (prevChainRef.current === chainId) return;
+    prevChainRef.current = chainId;
+
+    const a = searchParams.get("currencyA");
+    const b = searchParams.get("currencyB");
+    const nextIn = a ? resolveToken(chainId, a) : undefined;
+    const nextOut = b ? resolveToken(chainId, b) : undefined;
+
+    if (nextIn || nextOut) {
+      // URL tokens still valid on the settled chain → adopt them, keep URL.
+      setTokenIn(nextIn ?? getDefaultTokenIn(chainId));
+      setTokenOut(nextOut ?? getDefaultTokenOut(chainId));
+    } else {
+      // Stale params for this chain → reset to defaults and clear URL.
+      setTokenIn(getDefaultTokenIn(chainId));
+      setTokenOut(getDefaultTokenOut(chainId));
+      router.replace("/swap", { scroll: false });
+    }
     setTypedValue("");
     setIndependentField("in");
-  }, [chainId]);
+  }, [chainId, router, searchParams]);
+
+  // Reflect the chosen pair in the URL (currencyA = Token1, currencyB = Token2)
+  // so the swap state is shareable / bookmarkable. Called only on explicit
+  // user actions (token select, flip) — never on first mount, so opening the
+  // page with the default pair keeps the URL clean (/swap, no params).
+  function updateUrl(tin?: SwapToken, tout?: SwapToken) {
+    const params = new URLSearchParams();
+    const a = paramValue(tin);
+    const b = paramValue(tout);
+    if (a) params.set("currencyA", a);
+    if (b) params.set("currencyB", b);
+    const qs = params.toString();
+    router.replace(qs ? `/swap?${qs}` : "/swap", { scroll: false });
+  }
 
   const isExactOut = independentField === "out";
 
@@ -226,10 +297,10 @@ export function SwapCard() {
     ? amountOutWei
     : forwardQuote.data?.amountOutMin ?? 0n;
 
-  // True only on the very first fetch (no data yet). Background polling
-  // refetches keep `data` (via keepPreviousData) and are NOT `isLoading`,
-  // so we drive the spinner / card-hide off `isLoading` to avoid flicker
-  // every 5s — the quote updates silently as reserves change.
+  // `isLoading` is true only on the very first fetch (no data yet).
+  // Background polling refetches keep `data` (via keepPreviousData) and are
+  // NOT `isLoading`, so we drive the spinner / card-hide off `isLoading` to
+  // avoid flicker every 5s — the quote updates silently as reserves change.
   const isLoading = isExactOut ? reverseQuote.isLoading : forwardQuote.isLoading;
 
   // Effective slippage to display: the quote hook already resolved auto vs
@@ -243,6 +314,33 @@ export function SwapCard() {
   // in the receive (Token2) box must NOT trigger the "enter amount" prompt
   // while the reverse quote is still resolving (payWei is 0 mid-fetch).
   const hasAmountInput = typedValue.trim() !== "" && Number(typedValue) > 0;
+
+  // Detect when the user has changed the independent amount/tokens since the
+  // last quote resolved. Background polling keeps `data` (via keepPreviousData)
+  // and does NOT set `isLoading`, so we track a quote key and mark it stale
+  // while the new quote is still catching up. This makes the swap button and
+  // detail card show a fetching state immediately when the user types, without
+  // flickering every 5s on background refreshes.
+  const currentQuoteKey = useMemo(() => {
+    if (!tokenIn || !tokenOut || !hasAmountInput) return null;
+    return `${chainId}:${tokenIn.address}:${tokenOut.address}:${independentField}:${typedValue}:${slippageBps}:${autoSlippage}`;
+  }, [chainId, tokenIn, tokenOut, independentField, typedValue, slippageBps, autoSlippage, hasAmountInput]);
+
+  const currentQuoteKeyRef = useRef(currentQuoteKey);
+  useEffect(() => {
+    currentQuoteKeyRef.current = currentQuoteKey;
+  }, [currentQuoteKey]);
+
+  const [syncedQuoteKey, setSyncedQuoteKey] = useState<string | null>(null);
+  useEffect(() => {
+    setSyncedQuoteKey((prev) => {
+      const key = currentQuoteKeyRef.current;
+      return key && key !== prev ? key : prev;
+    });
+  }, [forwardQuote.data, reverseQuote.data]);
+
+  const quoteStale = hasAmountInput && currentQuoteKey !== null && currentQuoteKey !== syncedQuoteKey;
+  const isFetchingQuote = isLoading || quoteStale;
 
   const needsApproval =
     !!tokenIn &&
@@ -262,8 +360,13 @@ export function SwapCard() {
   //   positive amount — i.e. truly empty OR parseable to 0 ("0", "0.0",
   //   "0.00"). This way clearing the focused box, or entering "0.00", also
   //   clears the other box.
+  // While a quote is fetching (first load OR the user just changed the
+  // independent amount/tokens and the new quote hasn't resolved), the *opposite*
+  // (derived) box is blanked instead of showing the stale previous result. The
+  // focused box keeps `typedValue` untouched. So: typing Token1 clears Token2,
+  // and typing Token2 clears Token1 — until the new quote lands.
   const payValue = isExactOut
-    ? !hasAmountInput
+    ? !hasAmountInput || isFetchingQuote
       ? ""
       : reverseQuote.data
       ? formatAmount(reverseQuote.data.amountIn, tokenIn?.decimals ?? 18)
@@ -271,7 +374,7 @@ export function SwapCard() {
     : typedValue;
   const receiveValue = isExactOut
     ? typedValue
-    : !hasAmountInput
+    : !hasAmountInput || isFetchingQuote
     ? ""
     : forwardQuote.data
     ? formatAmount(forwardQuote.data.amountOut, tokenOut?.decimals ?? 18)
@@ -289,26 +392,33 @@ export function SwapCard() {
   // independent field, and KEEP typedValue. The value stays attached to the
   // field role, so the now-dependent box recalculates automatically.
   function flip() {
-    setTokenIn(tokenOut);
-    setTokenOut(tokenIn);
+    const nextIn = tokenOut;
+    const nextOut = tokenIn;
+    setTokenIn(nextIn);
+    setTokenOut(nextOut);
     setIndependentField((f) => (f === "in" ? "out" : "in"));
+    updateUrl(nextIn, nextOut);
   }
 
   function onSelect(side: "in" | "out", tk: SwapToken) {
+    let nextIn = tokenIn;
+    let nextOut = tokenOut;
     if (side === "in") {
       // Picking the token currently on the other side moves it here, and the
       // old "in" token takes its place — a swap, not a disable. (Matches the
       // "I clicked USDT in Token1's list → Token1=USDT, Token2=BNB" behavior.)
       if (tokenOut && tk.address === tokenOut.address) {
-        setTokenOut(tokenIn);
+        nextOut = tokenIn;
       }
-      setTokenIn(tk);
+      nextIn = tk;
     } else {
       if (tokenIn && tk.address === tokenIn.address) {
-        setTokenIn(tokenOut);
+        nextIn = tokenOut;
       }
-      setTokenOut(tk);
+      nextOut = tk;
     }
+    setTokenIn(nextIn);
+    setTokenOut(nextOut);
     // Requirement 1: if the user already typed an amount, KEEP it after the
     // token change. The independent field's value stays attached to its box and
     // the opposite box's quote recomputes for the new token automatically.
@@ -317,6 +427,8 @@ export function SwapCard() {
       setTypedValue("");
       setIndependentField("in");
     }
+    // Keep the URL in sync with the chosen pair so the swap is shareable.
+    updateUrl(nextIn, nextOut);
   }
 
   function setMax() {
@@ -464,10 +576,10 @@ export function SwapCard() {
   } else if (!hasAmountInput) {
     buttonLabel = t("swap.enterAmount");
     disabled = true;
-  } else if (isLoading) {
-    // First quote load (no data yet) — show a spinner + fetching label and
-    // keep the button disabled. Background polling refetches do NOT hit this
-    // branch, so the quote stays live/visible while reserves update.
+  } else if (isFetchingQuote) {
+    // Quote is loading for the first time or the user changed the amount/
+    // tokens and the new quote hasn't resolved yet. Show a spinner + fetching
+    // label and keep the button disabled.
     buttonLabel = t("swap.fetchingQuote");
     disabled = true;
   } else if (!activeQuote) {
@@ -600,12 +712,21 @@ export function SwapCard() {
         </div>
         <div className="flex items-center gap-2">
           <input
+            ref={inRef}
             inputMode="decimal"
             placeholder="0.0"
             value={payValue}
             onChange={(e) => {
               const v = e.target.value;
               if (/^\d*\.?\d*$/.test(v)) onTypeIn(v);
+            }}
+            onKeyDown={(e) => {
+              // Tab from Token1 jumps straight to the Token2 input instead of
+              // leaving the swap field group, keeping the cursor in the amount.
+              if (e.key === "Tab" && !e.shiftKey) {
+                e.preventDefault();
+                outRef.current?.focus();
+              }
             }}
             className="w-full bg-transparent text-2xl font-semibold outline-none placeholder:text-[var(--text-muted)]"
           />
@@ -636,6 +757,7 @@ export function SwapCard() {
         </div>
         <div className="flex items-center gap-2">
           <input
+            ref={outRef}
             inputMode="decimal"
             placeholder="0.0"
             value={receiveValue}
@@ -662,7 +784,7 @@ export function SwapCard() {
         disabled={disabled}
         className="btn-primary mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-bold"
       >
-        {isLoading ? (
+        {isFetchingQuote ? (
           <>
             <svg
               className="h-4 w-4 animate-spin"
@@ -691,76 +813,91 @@ export function SwapCard() {
         )}
       </button>
 
-      {hasAmountInput && activeQuote && !isLoading && (
+      {hasAmountInput && (isFetchingQuote || activeQuote) && (
         <div className="mt-3 space-y-3">
           {/* Rate + slippage single line, directly below the swap button */}
-          <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
-            <button
-              onClick={() => setShowInverseRate((v) => !v)}
-              className="flex items-center gap-1 hover:text-[var(--text)]"
-            >
-              {showInverseRate
-                ? `1 ${tokenOut?.symbol} ≈ ${(1 / activeQuote.rate).toFixed(6)} ${tokenIn?.symbol}`
-                : `1 ${tokenIn?.symbol} ≈ ${activeQuote.rate.toFixed(6)} ${tokenOut?.symbol}`}
-            </button>
-            <span>
-              {t("swap.slippage")}：
-              {autoSlippage
-                ? `${t("swap.auto")} ${formatSlippage(effectiveSlippageBps)}%`
-                : `${formatSlippage(effectiveSlippageBps)}%`}
-            </span>
-          </div>
+          {isFetchingQuote ? (
+            <div className="shimmer h-3 w-2/3 rounded bg-[var(--input-bg)]" />
+          ) : activeQuote ? (
+            <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+              <button
+                onClick={() => setShowInverseRate((v) => !v)}
+                className="flex items-center gap-1 hover:text-[var(--text)]"
+              >
+                {showInverseRate
+                  ? `1 ${tokenOut?.symbol} ≈ ${(1 / activeQuote.rate).toFixed(6)} ${tokenIn?.symbol}`
+                  : `1 ${tokenIn?.symbol} ≈ ${activeQuote.rate.toFixed(6)} ${tokenOut?.symbol}`}
+              </button>
+              <span>
+                {t("swap.slippage")}：
+                {autoSlippage
+                  ? `${t("swap.auto")} ${formatSlippage(effectiveSlippageBps)}%`
+                  : `${formatSlippage(effectiveSlippageBps)}%`}
+              </span>
+            </div>
+          ) : null}
 
           {/* Detail card: minimum received / maximum paid, price impact */}
           <div className="input-card space-y-1.5 rounded-2xl px-3.5 py-3 text-xs">
-            <Row
-              label={isExactOut ? t("swap.maxPaid") : t("swap.minReceived")}
-              value={
-                "amountInMax" in activeQuote
-                  ? `${formatAmount(activeQuote.amountInMax, tokenIn?.decimals ?? 18)} ${tokenIn?.symbol}`
-                  : `${formatAmount(activeQuote.amountOutMin, tokenOut?.decimals ?? 18)} ${tokenOut?.symbol}`
-              }
-            />
-            <Row
-              label={t("swap.priceImpact")}
-              value={
-                activeQuote.priceImpact != null
-                  ? formatPriceImpact(activeQuote.priceImpact)
-                  : "—"
-              }
-              color={
-                activeQuote.priceImpact != null
-                  ? priceImpactColor(activeQuote.priceImpact)
-                  : undefined
-              }
-            />
-            <Row
-              label={t("swap.tradingFee")}
-              value={`${formatSlippage(SWAP_FEE_BPS)}%`}
-            />
-
-            {/* Swap route: BNB → USDT (direct) or BNB → BNB → USDT (via wrapped, shown as BNB) */}
-            <div className="flex items-center justify-between gap-2">
-              <span className="shrink-0 text-[var(--text-muted)]">
-                {t("swap.route")}
-              </span>
-              <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
-                {activeQuote.path.map((addr, i) => {
-                  const tk = buildRouteToken(addr, chainId);
-                  return (
-                    <Fragment key={`${addr}-${i}`}>
-                      {i > 0 && (
-                        <span className="text-[var(--text-muted)]">→</span>
-                      )}
-                      <span className="flex items-center gap-1 font-medium">
-                        <TokenLogo token={tk} size={16} />
-                        {tk.symbol}
-                      </span>
-                    </Fragment>
-                  );
-                })}
+            {isFetchingQuote ? (
+              <div className="space-y-2">
+                <div className="shimmer h-3 w-full rounded bg-[var(--input-bg)]" />
+                <div className="shimmer h-3 w-full rounded bg-[var(--input-bg)]" />
+                <div className="shimmer h-3 w-full rounded bg-[var(--input-bg)]" />
+                <div className="shimmer h-3 w-3/4 rounded bg-[var(--input-bg)]" />
               </div>
-            </div>
+            ) : activeQuote ? (
+              <>
+                <Row
+                  label={isExactOut ? t("swap.maxPaid") : t("swap.minReceived")}
+                  value={
+                    "amountInMax" in activeQuote
+                      ? `${formatAmount(activeQuote.amountInMax, tokenIn?.decimals ?? 18)} ${tokenIn?.symbol}`
+                      : `${formatAmount(activeQuote.amountOutMin, tokenOut?.decimals ?? 18)} ${tokenOut?.symbol}`
+                  }
+                />
+                <Row
+                  label={t("swap.priceImpact")}
+                  value={
+                    activeQuote.priceImpact != null
+                      ? formatPriceImpact(activeQuote.priceImpact)
+                      : "—"
+                  }
+                  color={
+                    activeQuote.priceImpact != null
+                      ? priceImpactColor(activeQuote.priceImpact)
+                      : undefined
+                  }
+                />
+                <Row
+                  label={t("swap.tradingFee")}
+                  value={`${formatSlippage(SWAP_FEE_BPS)}%`}
+                />
+
+                {/* Swap route: BNB → USDT (direct) or BNB → BNB → USDT (via wrapped, shown as BNB) */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="shrink-0 text-[var(--text-muted)]">
+                    {t("swap.route")}
+                  </span>
+                  <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+                    {activeQuote.path.map((addr, i) => {
+                      const tk = buildRouteToken(addr, chainId);
+                      return (
+                        <Fragment key={`${addr}-${i}`}>
+                          {i > 0 && (
+                            <span className="text-[var(--text-muted)]">→</span>
+                          )}
+                          <span className="flex items-center gap-1 font-medium">
+                            <TokenLogo token={tk} size={16} />
+                            {tk.symbol}
+                          </span>
+                        </Fragment>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
       )}

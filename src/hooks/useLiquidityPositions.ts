@@ -119,7 +119,7 @@ export function useLiquidityPositions(
       if (withBalance.length === 0) return [];
 
       // 3) Reserves, total supply, token ordering for each position.
-      const details = await Promise.all(
+      const raw = await Promise.all(
         withBalance.map(async ({ p, pair, lpBalance }) => {
           try {
             const [reserves, totalSupply, t0, t1] = await Promise.all([
@@ -164,14 +164,17 @@ export function useLiquidityPositions(
               reserveB: reserve1,
               totalSupply: ts,
               share,
-            } as LiquidityPosition;
+            };
           } catch {
             return null;
           }
         })
       );
+      const base = raw.filter((d): d is NonNullable<typeof d> => d !== null);
 
-      return details.filter((d): d is LiquidityPosition => d !== null);
+      // No pricing here — USD value is filled in by the parallel useTokenPrices
+      // hook so positions paint immediately and values "pop in" once resolved.
+      return base;
     },
   });
 }
