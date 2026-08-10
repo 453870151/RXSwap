@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0d0d;
+    font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #fff;
+    min-height: 100vh;
+    padding: 28px 40px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .crumb { font-size: 13px; color: rgba(255,255,255,0.45); }
+  .crumb b { color: rgba(255,255,255,0.9); font-weight: 500; }
+  .top-row { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+  h1 { font-size: 34px; font-weight: 700; letter-spacing: 0.01em; }
+  .top-actions { display: flex; align-items: center; gap: 10px; }
+  .chip {
+    display: flex; align-items: center; gap: 7px;
+    background: #1c1c1c; border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 999px; padding: 8px 16px;
+    font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.85);
+  }
+  .chip svg { width: 14px; height: 14px; }
+  .gear {
+    width: 36px; height: 36px; border-radius: 999px;
+    background: #1c1c1c; border: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .gear svg { width: 16px; height: 16px; color: rgba(255,255,255,0.75); }
+
+  .layout { display: flex; gap: 56px; margin-top: 34px; max-width: 1080px; }
+
+  /* ---- left steps ---- */
+  .steps { width: 300px; flex-shrink: 0; }
+  .step { display: flex; gap: 14px; }
+  .step-rail { display: flex; flex-direction: column; align-items: center; }
+  .dot {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; flex-shrink: 0;
+  }
+  .dot.on { background: #fff; color: #111; }
+  .dot.off { background: #222; color: rgba(255,255,255,0.5); }
+  .rail-line { width: 1px; height: 44px; background: rgba(255,255,255,0.12); margin: 6px 0; }
+  .step-body { padding-top: 6px; }
+  .step-kicker { font-size: 12px; color: rgba(255,255,255,0.4); }
+  .step-title { font-size: 15px; font-weight: 600; margin-top: 2px; }
+  .step.off .step-title { color: rgba(255,255,255,0.55); font-weight: 500; }
+
+  /* ---- right panel ---- */
+  .panel {
+    flex: 1; background: #131313;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 20px; padding: 26px 26px 26px;
+  }
+  .sec-title { font-size: 17px; font-weight: 700; }
+  .sec-desc { font-size: 13px; color: rgba(255,255,255,0.45); margin-top: 5px; line-height: 1.6; }
+  .pair-row { display: flex; gap: 14px; margin-top: 16px; }
+  .token-btn {
+    flex: 1; display: flex; align-items: center; gap: 10px;
+    background: #1e1e1e; border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px; padding: 13px 16px;
+    font-size: 15px; font-weight: 700;
+  }
+  .token-btn img { width: 26px; height: 26px; border-radius: 50%; }
+  .token-btn .chev { margin-left: auto; color: rgba(255,255,255,0.5); }
+  .token-btn.empty { background: #fff; color: #111; }
+  .token-btn.empty .chev { color: rgba(0,0,0,0.55); }
+  .fee-card {
+    margin-top: 16px; background: #191919;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 14px; padding: 15px 18px;
+  }
+  .fee-card .t { font-size: 14px; font-weight: 700; }
+  .fee-card .s { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 3px; }
+  .cta {
+    margin-top: 22px; width: 100%;
+    background: #fff; color: #111;
+    border-radius: 999px; padding: 15px 0;
+    font-size: 15px; font-weight: 700; text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="crumb">你的頭寸 &nbsp;›&nbsp; <b>新頭寸</b></div>
+  <div class="top-row">
+    <h1>新頭寸</h1>
+    <div class="top-actions">
+      <div class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>重置</div>
+      <div class="chip">v2 頭寸<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></div>
+      <div class="gear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5h.1a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="steps">
+      <div class="step">
+        <div class="step-rail"><div class="dot on">1</div><div class="rail-line"></div></div>
+        <div class="step-body">
+          <div class="step-kicker">第1步</div>
+          <div class="step-title">選擇代幣對和費用</div>
+        </div>
+      </div>
+      <div class="step off">
+        <div class="step-rail"><div class="dot off">2</div></div>
+        <div class="step-body">
+          <div class="step-kicker">第2步</div>
+          <div class="step-title">輸入存入金額</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="sec-title">選擇交易對</div>
+      <div class="sec-desc">選擇你要為其提供流動性的代幣。你可以在所有受支援的網絡上選擇代幣。</div>
+      <div class="pair-row">
+        <div class="token-btn">
+          <img src="../public/images/symbol/bnb.png" alt="">
+          BNB
+          <svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <div class="token-btn">
+          <img src="../public/images/symbol/usdt.png" alt="">
+          USDT
+          <svg class="chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </div>
+
+      <div class="sec-title" style="margin-top:26px;">費用等級</div>
+      <div class="sec-desc">提供流動性所賺取的金額。所有 v2 池的費用固定為 0.25%。</div>
+      <div class="fee-card">
+        <div class="t">0.25% 費用等級</div>
+        <div class="s">你將賺取的費用百分比</div>
+      </div>
+
+      <div class="cta">繼續</div>
+    </div>
+  </div>
+</body>
+</html>

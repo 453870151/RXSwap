@@ -89,11 +89,6 @@ export function AppHeader() {
           <WalletButton />
         </div>
       </div>
-      
-      <div
-        className="h-[1px] w-full"
-        style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(200,169,81,0.3) 20%, rgba(6,182,212,0.2) 50%, rgba(200,169,81,0.1) 80%, transparent 100%)' }}
-      />
     </header>
   );
 }

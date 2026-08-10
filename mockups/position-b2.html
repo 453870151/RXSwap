@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #131313;
+    font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 24px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .card {
+    width: 920px;
+    background: #1b1b1b;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 20px;
+    padding: 20px 24px;
+    color: #fff;
+    display: flex; align-items: center; gap: 20px;
+  }
+  .logos { display: flex; flex-shrink: 0; }
+  .logos img { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #1b1b1b; background: #2a2a2a; }
+  .logos img + img { margin-left: -12px; }
+  .info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .name { font-size: 18px; font-weight: 700; }
+  .badge {
+    font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.55);
+    background: #2b2b2b; border-radius: 6px; padding: 2px 7px;
+  }
+  .status { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #4ade80; }
+  .status .dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.7); }
+  .status .sep { color: rgba(255,255,255,0.2); }
+  .status .muted { color: rgba(255,255,255,0.45); }
+  .status .muted b { color: rgba(255,255,255,0.9); font-weight: 600; }
+  /* right side */
+  .right { margin-left: auto; display: flex; align-items: center; gap: 28px; flex-shrink: 0; }
+  .metrics { display: flex; gap: 28px; }
+  .metric { text-align: right; }
+  .metric .v { font-size: 17px; font-weight: 600; }
+  .metric .l { margin-top: 3px; font-size: 12px; color: rgba(255,255,255,0.45); }
+  .actions { display: flex; gap: 10px; }
+  .btn { border-radius: 12px; padding: 9px 22px; font-size: 14px; font-weight: 700; cursor: pointer; border: none; }
+  .btn-ghost { background: transparent; border: 1px solid rgba(255,255,255,0.14); color: rgba(255,255,255,0.75); }
+  .btn-gold { background: linear-gradient(135deg, #f5c542, #e8b923); color: #171717; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logos">
+      <img src="../public/images/symbol/bnb.png" alt="">
+      <img src="../public/images/symbol/usdt.png" alt="">
+    </div>
+    <div class="info">
+      <div class="name-row">
+        <span class="name">BNB / USDT</span>
+        <span class="badge">V2</span>
+        <span class="badge">0.25%</span>
+      </div>
+      <div class="status">
+        <span class="dot"></span>提供中
+        <span class="sep">|</span>
+        <span class="muted">存入 <b>0.001</b> BNB + <b>0.586</b> USDT</span>
+      </div>
+    </div>
+    <div class="right">
+      <div class="metrics">
+        <div class="metric">
+          <div class="v">US$0.123</div>
+          <div class="l">頭寸</div>
+        </div>
+        <div class="metric">
+          <div class="v">0.012%</div>
+          <div class="l">池占比</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-ghost">移除</button>
+        <button class="btn btn-gold">添加</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

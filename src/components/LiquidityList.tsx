@@ -1,23 +1,23 @@
 "use client";
 
-import { useState, useMemo, useEffect, useId } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useAccount, useConnect, usePublicClient } from "wagmi";
 import { maxUint256 } from "viem";
 import { bsc } from "wagmi/chains";
 import { useLiquidityPositions, type LiquidityPosition } from "@/hooks/useLiquidityPositions";
-import { useAllPools, useAllPoolPrices, useTokenPrices, DISPLAY_CAP, type AllPool } from "@/hooks/useAllPools";
+import { useTokenPrices } from "@/hooks/useAllPools";
 import { useRemoveLiquidity } from "@/hooks/useRemoveLiquidity";
 import { useApprove } from "@/hooks/useApprove";
 import { useToast } from "./Toaster";
 import { TokenLogo } from "./TokenLogo";
-import { formatAmount, formatUsd } from "@/lib/format";
+import { formatAmount, formatUsd, formatSlippage } from "@/lib/format";
 import { computeMinAmountOut } from "@/lib/swap";
 import { getChainMeta } from "@/config/chains";
 import { getLiquidityAddedAt } from "@/lib/recentLiquidity";
 import { ERC20_ABI } from "@/config/abis/erc20";
-import { getRouterAddresses } from "@/config/contracts";
+import { getRouterAddresses, SWAP_FEE_BPS } from "@/config/contracts";
 import { formatUnits } from "viem";
 import { type SwapToken } from "@/config/tokens";
 import { useTranslation } from "./LanguageProvider";
@@ -31,18 +31,12 @@ export function LiquidityList() {
   const { connect, connectors } = useConnect();
   const chainId = connectedChain ?? bsc.id;
 
-  const [tab, setTab] = useState<"all" | "mine">("all");
   const [removing, setRemoving] = useState<LiquidityPosition | null>(null);
 
-  const { data: allPools, isLoading: allLoading } = useAllPools(chainId);
-  // Prices resolve independently of the list: the pools paint first, values
-  // "pop in" when this settles. Disabled until the basic list is available.
-  const { data: priceMap } = useAllPoolPrices(chainId, allPools);
   const { data: positions, isLoading: mineLoading, refetch } = useLiquidityPositions(address, chainId);
 
   // Unique tokens across the user's positions — priced in parallel once, so the
-  // "My Positions" USD values paint with the positions and "pop in" afterwards
-  // (same progressive treatment as the All Pools tab).
+  // "My Positions" USD values paint with the positions and "pop in" afterwards.
   const positionTokens = useMemo(() => {
     if (!positions) return [];
     const m = new Map<string, SwapToken>();
@@ -85,165 +79,29 @@ export function LiquidityList() {
 
   return (
     <>
-      <TabBar tab={tab} onTab={setTab} onAdd={goAdd} />
-
-      {tab === "all" ? (
-        <AllPoolsView
-          data={allPools}
-          isLoading={allLoading}
-          priceMap={priceMap}
-          onAdd={goAddPair}
-        />
-      ) : (
-        <MineView
-          isConnected={isConnected}
-          isLoading={mineLoading}
-          positions={positions}
-          priceMap={positionPriceMap}
-          chainId={chainId}
-          onAdd={goAdd}
-          onAddFor={goAddFor}
-          onRemove={setRemoving}
-          removing={removing}
-          onDone={() => {
-            setRemoving(null);
-            refetch();
-          }}
-        />
-      )}
+      <MineView
+        isConnected={isConnected}
+        isLoading={mineLoading}
+        positions={positions}
+        priceMap={positionPriceMap}
+        chainId={chainId}
+        onAdd={goAdd}
+        onAddFor={goAddFor}
+        onRemove={setRemoving}
+        removing={removing}
+        onDone={() => {
+          setRemoving(null);
+          refetch();
+        }}
+      />
     </>
   );
 }
 
-// Tab switcher that replaces the old "Your Liquidity" heading. The "All Pools"
-// tab is public (no wallet needed); "My Positions" requires a connection.
-function TabBar({
-  tab,
-  onTab,
-  onAdd,
-}: {
-  tab: "all" | "mine";
-  onTab: (t: "all" | "mine") => void;
-  onAdd: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex w-full max-w-6xl items-center justify-between gap-3 px-1">
-      <div className="flex gap-1 rounded-full border border-[var(--border)] bg-[var(--input-bg)] p-1">
-        <button
-          onClick={() => onTab("all")}
-          className={
-            "rounded-full px-4 py-1.5 text-sm font-semibold transition " +
-            (tab === "all"
-              ? "bg-brand-gradient text-[#0b0b14] shadow-glow"
-              : "text-[var(--text-muted)] hover:text-[var(--text)]")
-          }
-        >
-          {t("liquidity.tabAll")}
-        </button>
-        <button
-          onClick={() => onTab("mine")}
-          className={
-            "rounded-full px-4 py-1.5 text-sm font-semibold transition " +
-            (tab === "mine"
-              ? "bg-brand-gradient text-[#0b0b14] shadow-glow"
-              : "text-[var(--text-muted)] hover:text-[var(--text)]")
-          }
-        >
-          {t("liquidity.tabMine")}
-        </button>
-      </div>
-      <button
-        onClick={onAdd}
-        className="btn-primary rounded-full px-4 py-2 text-sm font-semibold"
-      >
-        + {t("liquidity.add")}
-      </button>
-    </div>
-  );
-}
-
-// "All Pools" tab: every on-chain pool, with reserves and a USD value that
-// fills in once prices resolve. Fully usable without a connected wallet.
-function AllPoolsView({
-  data,
-  isLoading,
-  priceMap,
-  onAdd,
-}: {
-  data: AllPool[] | undefined;
-  isLoading: boolean;
-  priceMap: Map<string, number | null> | undefined;
-  onAdd: (a: SwapToken, b: SwapToken) => void;
-}) {
-  const { t } = useTranslation();
-
-  if (isLoading) {
-    return (
-      <div className="grid w-full max-w-6xl grid-cols-1 gap-4 lg:grid-cols-2">
-        {[0, 1].map((i) => (
-          <div key={i} className="glass animate-fade-up rounded-3xl p-8">
-            <div className="shimmer h-24 w-full rounded-2xl bg-[var(--input-bg)]" />
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (!data || data.length === 0) {
-    return (
-      <div className="glass w-full max-w-6xl animate-fade-up rounded-3xl p-10 text-center text-sm text-[var(--text-muted)]">
-        {t("liquidity.noPositions")}
-      </div>
-    );
-  }
-
-  const display = data.slice(0, DISPLAY_CAP);
-  const truncated = data.length > DISPLAY_CAP;
-
-  return (
-    <>
-      <div className="grid w-full max-w-6xl grid-cols-1 gap-4 animate-fade-up lg:grid-cols-2">
-        {display.map((p) => (
-          <PoolCard
-            key={p.pair}
-            pool={p}
-            valueUsd={poolValueUsd(p, priceMap)}
-            onAdd={onAdd}
-          />
-        ))}
-      </div>
-      {truncated && (
-        <p className="w-full max-w-6xl px-1 text-xs text-[var(--text-muted)]">
-          {t("liquidity.showingTop", { n: DISPLAY_CAP })}
-        </p>
-      )}
-    </>
-  );
-}
-
-// USD value of a pool's reserves. Returns:
+// USD value of the user's holdings in a position. Return contract:
 //   undefined → prices still loading (card shows a shimmer)
 //   null      → a component token has no on-chain route (card shows "—")
-//   number    → resolved USD value
-function poolValueUsd(
-  pool: AllPool,
-  priceMap: Map<string, number | null> | undefined
-): number | null | undefined {
-  if (!priceMap) return undefined;
-  const pa = priceMap.get(pool.tokenA.address.toLowerCase());
-  const pb = priceMap.get(pool.tokenB.address.toLowerCase());
-  if (pa === undefined || pb === undefined) return undefined;
-  if (pa === null || pb === null) return null;
-  const amtA = Number(formatUnits(pool.reserveA, pool.tokenA.decimals));
-  const amtB = Number(formatUnits(pool.reserveB, pool.tokenB.decimals));
-  return amtA * pa + amtB * pb;
-}
-
-// USD value of the user's holdings in a position. Same return contract as
-// poolValueUsd: undefined → prices still loading (card shows a shimmer),
-// null → a component token has no on-chain route (card shows "—"), number →
-// resolved USD value.
+//   number    → resolved USD value.
 function positionValueUsd(
   p: LiquidityPosition,
   priceMap: Map<string, number | null> | undefined
@@ -258,50 +116,13 @@ function positionValueUsd(
   return amtA * pa + amtB * pb;
 }
 
-function PoolCard({
-  pool,
-  valueUsd,
-  onAdd,
-}: {
-  pool: AllPool;
-  valueUsd: number | null | undefined;
-  onAdd: (a: SwapToken, b: SwapToken) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="glass flex flex-col gap-4 rounded-3xl p-5 transition-transform duration-300 hover:-translate-y-0.5">
-      <div className="flex items-center gap-2.5">
-        <div className="flex -space-x-2">
-          <TokenLogo token={pool.tokenA} size={34} />
-          <TokenLogo token={pool.tokenB} size={34} />
-        </div>
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate text-base font-bold">
-            {pool.tokenA.symbol} / {pool.tokenB.symbol}
-          </span>
-          {valueUsd === undefined ? (
-            <div className="shimmer mt-1 h-3 w-20 rounded bg-[var(--input-bg)]" />
-          ) : (
-            <span className="text-xs text-[var(--text-muted)]">
-              {valueUsd != null ? formatUsd(valueUsd) : "—"}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <AmountRow token={pool.tokenA} amount={pool.reserveA} />
-        <AmountRow token={pool.tokenB} amount={pool.reserveB} />
-      </div>
-
-      <button
-        onClick={() => onAdd(pool.tokenA, pool.tokenB)}
-        className="btn-primary w-full rounded-xl py-2 text-sm font-bold"
-      >
-        {t("liquidity.addBtn")}
-      </button>
-    </div>
-  );
+// Pool share as a percentage string: "100%" when effectively the whole pool,
+// two decimals for normal shares, "<0.01%" for dust.
+function formatSharePct(share: number): string {
+  const pct = share * 100;
+  if (pct >= 99.95) return "100%";
+  if (pct < 0.01) return "<0.01%";
+  return `${pct.toFixed(2)}%`;
 }
 
 // "My Positions" tab: the previous page, now scoped to this tab. Shows the
@@ -359,7 +180,7 @@ function MineView({
 
   if (isLoading) {
     return (
-      <div className="glass w-full max-w-6xl animate-fade-up rounded-3xl p-8">
+      <div className="glass !bg-transparent w-full max-w-6xl animate-fade-up rounded-3xl p-8">
         <div className="shimmer h-4 w-1/2 rounded bg-[var(--input-bg)]" />
         <div className="shimmer mt-3 h-16 w-full rounded-2xl bg-[var(--input-bg)]" />
       </div>
@@ -368,15 +189,18 @@ function MineView({
 
   if (!positions || positions.length === 0) {
     return (
-      <div className="grid w-full max-w-6xl grid-cols-1 gap-4 animate-fade-up lg:grid-cols-2">
-        <AddPlaceholder onClick={onAdd} />
-        <QuickStartGuide />
+      <div className="w-full max-w-6xl animate-fade-up">
+        <AddPlaceholder
+          onClick={onAdd}
+          title={t("liquidity.emptyTitle")}
+          hint={t("liquidity.emptyHint")}
+        />
       </div>
     );
   }
 
   return (
-    <div className="grid w-full max-w-6xl grid-cols-1 gap-4 animate-fade-up lg:grid-cols-2">
+    <div className="flex w-full max-w-6xl animate-fade-up flex-col gap-3">
       {sortedPositions?.map((p) => {
         // USD value of the user's holdings, derived from the parallel price map.
         // undefined → prices still loading (skeleton), null → no route ("—").
@@ -384,58 +208,86 @@ function MineView({
         return (
         <div
           key={p.pair}
-          className="glass flex items-center gap-4 rounded-3xl p-5 transition-transform duration-300 hover:-translate-y-0.5"
+          className="glass flex flex-col gap-4 rounded-[20px] p-6 transition border border-[rgba(255,255,255,0.12)] !bg-transparent sm:flex-row sm:items-center sm:gap-5 sm:px-6"
         >
-          <div className="flex min-w-0 flex-1 flex-col gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="flex -space-x-2">
-                <TokenLogo token={p.tokenA} size={34} />
-                <TokenLogo token={p.tokenB} size={34} />
-              </div>
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate text-base font-bold">
+          {/* Left: overlapping logos + pair name / badges / status */}
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex flex-none -space-x-3">
+              <TokenLogo token={p.tokenA} size={40} />
+              <TokenLogo token={p.tokenB} size={40} />
+            </div>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-lg font-bold">
                   {p.tokenA.symbol} / {p.tokenB.symbol}
                 </span>
-                {valueUsd === undefined ? (
-                  <div className="shimmer mt-1 h-3 w-20 rounded bg-[var(--input-bg)]" />
-                ) : (
-                  <span className="text-xs text-[var(--text-muted)]">
-                    {valueUsd != null ? formatUsd(valueUsd) : "—"}
-                  </span>
-                )}
+                <span className="rounded-md bg-[#2b2b2b] px-[7px] py-[2px] text-[11px] font-semibold text-white/55">
+                  V2
+                </span>
+                <span className="rounded-md bg-[#2b2b2b] px-[7px] py-[2px] text-[11px] font-semibold text-white/55">
+                  {formatSlippage(SWAP_FEE_BPS)}%
+                </span>
+              </div>
+              <div className="text-[13px] text-white/45">
+                {t("liquidity.deposited")}{" "}
+                <span className="font-semibold text-white/90">
+                  {formatAmount(p.amountA, p.tokenA.decimals)}
+                </span>{" "}
+                {p.tokenA.symbol} +{" "}
+                <span className="font-semibold text-white/90">
+                  {formatAmount(p.amountB, p.tokenB.decimals)}
+                </span>{" "}
+                {p.tokenB.symbol}
               </div>
             </div>
+          </div>
 
-            <div className="flex flex-col gap-2">
-              <AmountRow token={p.tokenA} amount={p.amountA} />
-              <AmountRow token={p.tokenB} amount={p.amountB} />
+          {/* Right: USD value / pool share metrics + actions */}
+          <div className="flex flex-col gap-4 sm:ml-auto sm:flex-row sm:items-center sm:gap-7">
+            <div className="flex gap-7">
+              <div className="sm:text-right">
+                {valueUsd === undefined ? (
+                  <div className="shimmer h-5 w-16 rounded bg-[var(--input-bg)]" />
+                ) : (
+                  <div className="text-[17px] font-semibold">
+                    {valueUsd != null ? formatUsd(valueUsd) : "—"}
+                  </div>
+                )}
+                <div className="mt-[3px] text-xs text-white/45">
+                  {t("liquidity.position")}
+                </div>
+              </div>
+              <div className="sm:text-right">
+                <div className="text-[17px] font-semibold">
+                  {formatSharePct(p.share)}
+                </div>
+                <div className="mt-[3px] text-xs text-white/45">
+                  {t("liquidity.share")}
+                </div>
+              </div>
             </div>
-
-            <div className="mt-1 flex gap-2.5">
+            <div className="flex gap-2.5">
               <button
                 onClick={() => onRemove(p)}
-                className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--input-bg)] py-2 text-sm font-semibold transition hover:bg-[var(--hover)]"
+                className="flex-1 rounded-xl border border-white/[0.14] px-[22px] py-[9px] text-sm font-bold text-white/75 transition hover:bg-white/5 sm:flex-none"
               >
                 {t("liquidity.remove")}
               </button>
               <button
                 onClick={() => onAddFor(p)}
-                className="btn-primary flex-1 rounded-xl py-2 text-sm font-bold"
+                className="btn-primary flex-1 rounded-xl px-[22px] py-[9px] text-sm font-bold sm:flex-none"
               >
                 {t("liquidity.addBtn")}
               </button>
             </div>
           </div>
-
-          <ShareRing share={p.share} label={t("liquidity.share")} />
         </div>
         );
       })}
 
-      {/* Quick-add placeholder: fills the next grid cell so a single (or few)
-          position doesn't leave an empty right column, and doubles as a clear
+      {/* Quick-add placeholder appended after the position rows as a clear
           add-liquidity entry point. */}
-      <AddPlaceholder onClick={onAdd} />
+      <AddPlaceholder compact onClick={onAdd} />
 
       {removing && (
         <RemoveModal
@@ -452,23 +304,43 @@ function MineView({
 // Dashed "add liquidity" placeholder card. Used as the empty state (no
 // positions) and appended to the positions grid as a quick-add entry.
 // `onClick` overrides the default navigation (e.g. to gate on wallet connect).
-function AddPlaceholder({ className = "", onClick }: { className?: string; onClick?: () => void }) {
+function AddPlaceholder({ className = "", onClick, compact = false, title, hint }: { className?: string; onClick?: () => void; compact?: boolean; title?: string; hint?: string }) {
   const { t } = useTranslation();
   const router = useRouter();
   const handleClick = onClick ?? (() => router.push("/liquidity/add?step=1"));
+  const label = title ?? t("liquidity.addNew");
+  const sub = hint ?? t("liquidity.addNewHint");
+  if (compact) {
+    // Horizontal dashed bar used at the end of the position row stack.
+    return (
+      <button
+        onClick={handleClick}
+        className={
+          "flex w-full items-center justify-center gap-2.5 rounded-2xl border border-dashed border-[rgba(232,185,35,0.35)] bg-[rgba(232,185,35,0.03)] px-5 py-4 text-center transition hover:border-[rgba(232,185,35,0.65)] hover:bg-[rgba(232,185,35,0.07)] " +
+          className
+        }
+      >
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-gradient text-base font-light text-[#0b0b14] shadow-glow">
+          +
+        </span>
+        <span className="text-sm font-bold">{label}</span>
+        <span className="text-xs text-[var(--text-muted)]">{sub}</span>
+      </button>
+    );
+  }
   return (
     <button
       onClick={handleClick}
       className={
-        "flex min-h-[180px] w-full flex-col items-center justify-center gap-2 rounded-3xl border border-dashed border-[rgba(232,185,35,0.35)] bg-[rgba(232,185,35,0.03)] p-5 text-center transition hover:border-[rgba(232,185,35,0.65)] hover:bg-[rgba(232,185,35,0.07)] " +
+        "flex min-h-[180px] w-full flex-col items-center justify-center gap-2 rounded-3xl border border-[rgba(255,255,255,0.12)] p-5 text-center transition hover:bg-[#1F1F1F] " +
         className
       }
     >
       <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-gradient text-2xl font-light text-[#0b0b14] shadow-glow">
         +
       </span>
-      <span className="text-sm font-bold">{t("liquidity.addNew")}</span>
-      <span className="text-xs text-[var(--text-muted)]">{t("liquidity.addNewHint")}</span>
+      <span className="text-sm font-bold">{label}</span>
+      <span className="text-xs text-[var(--text-muted)]">{sub}</span>
     </button>
   );
 }
@@ -482,7 +354,7 @@ function QuickStartGuide() {
     { title: t("liquidity.qs3Title"), desc: t("liquidity.qs3Desc") },
   ];
   return (
-    <div className="glass rounded-3xl p-6">
+    <div className="glass rounded-3xl p-6 !bg-transparent">
       <h4 className="text-sm font-bold">{t("liquidity.quickStart")}</h4>
       <p className="mt-1 text-xs text-[var(--text-muted)]">{t("liquidity.quickStartHint")}</p>
       <div className="mt-4">
@@ -511,7 +383,7 @@ function ConnectPrompt() {
   const { t } = useTranslation();
   const { connect, connectors, isPending } = useConnect();
   return (
-    <div className="glass flex h-full w-full flex-col items-center justify-center rounded-3xl px-6 py-16 text-center">
+    <div className="glass flex h-full w-full flex-col items-center justify-center rounded-3xl px-6 py-16 text-center !bg-transparent">
       <div className="relative mb-6 flex h-20 w-20 items-center justify-center">
         <div
           className="absolute -inset-3 rounded-full"
@@ -542,59 +414,6 @@ function ConnectPrompt() {
       >
         {isPending ? t("common.connecting") : t("common.connectWallet")}
       </button>
-    </div>
-  );
-}
-
-function AmountRow({ token, amount }: { token: SwapToken; amount: bigint }) {
-  return (
-    <div className="flex items-center justify-between rounded-xl bg-[var(--input-bg)] px-3 py-2">
-      <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
-        <TokenLogo token={token} size={18} />
-        {token.symbol}
-      </div>
-      <span className="text-sm font-bold">{formatAmount(amount, token.decimals)}</span>
-    </div>
-  );
-}
-
-// Pool-share donut: gold arc fills proportionally to `share` (a 0..1 fraction).
-// For "My Positions" it's the user's share of that pool; for "All Pools" it's
-// the pool's share of total platform liquidity. Gradient id must be unique per
-// card, hence useId.
-function ShareRing({ share, label }: { share: number; label: string }) {
-  const id = useId();
-  const pct = Math.max(0, Math.min(100, share * 100));
-  const r = 40;
-  const c = 2 * Math.PI * r;
-  const offset = c * (1 - pct / 100);
-  const display = pct >= 99.95 ? "100" : pct.toFixed(1);
-  return (
-    <div className="relative h-24 w-24 flex-none">
-      <svg width="96" height="96" viewBox="0 0 96 96" className="-rotate-90">
-        <circle cx="48" cy="48" r={r} stroke="rgba(255,255,255,0.06)" strokeWidth="8" fill="none" />
-        <circle
-          cx="48"
-          cy="48"
-          r={r}
-          stroke={`url(#${id})`}
-          strokeWidth="8"
-          fill="none"
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={offset}
-        />
-        <defs>
-          <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#f5c542" />
-            <stop offset="1" stopColor="#e8b923" />
-          </linearGradient>
-        </defs>
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-base font-bold">{display}%</span>
-        <span className="text-[10px] text-[var(--text-muted)]">{label}</span>
-      </div>
     </div>
   );
 }

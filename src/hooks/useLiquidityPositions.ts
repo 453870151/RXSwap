@@ -21,14 +21,14 @@ function pairAddress(token: SwapToken, chainId: number): Address {
 }
 
 /**
- * Map a pair's token0/token1 address back into a display token. Treats the
- * wrapped-native contract as the native asset so WBNB-based pairs render as BNB.
+ * Map a pair's token0/token1 address back into a display token. On-chain pairs
+ * never hold the native coin — the router wraps it to WNATIVE — so the pair
+ * always reports the real WBNB contract. We map straight to the token list,
+ * letting a BNB-backed pool read honestly as "USDT / WBNB" instead of masking
+ * the wrapped asset as BNB. (The native-as-BNB display is reserved for the
+ * swap page via the synthetic zero-address token.)
  */
 function resolveToken(chainId: number, address: Address): SwapToken | undefined {
-  const wnative = WNATIVE[chainId];
-  if (address.toLowerCase() === wnative.toLowerCase()) {
-    return getNativeToken(chainId);
-  }
   return getTokenByAddress(chainId, address);
 }
 
@@ -45,12 +45,18 @@ export interface LiquidityPosition {
   share: number;
 }
 
-/** Unique unordered pairs from the token list. */
+/** Unique unordered pairs from the token list.
+ *  The synthetic native token is excluded because its on-chain pair is always
+ *  the wrapped-native contract; that pair is already covered by the WBNB entry
+ *  in the token list. Including both BNB and WBNB would query the same pair
+ *  twice and duplicate the user's position rows.
+ */
 function uniquePairs(tokens: SwapToken[]): [SwapToken, SwapToken][] {
+  const list = tokens.filter((t) => !t.isNative);
   const pairs: [SwapToken, SwapToken][] = [];
-  for (let i = 0; i < tokens.length; i++) {
-    for (let j = i + 1; j < tokens.length; j++) {
-      pairs.push([tokens[i], tokens[j]]);
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      pairs.push([list[i], list[j]]);
     }
   }
   return pairs;
