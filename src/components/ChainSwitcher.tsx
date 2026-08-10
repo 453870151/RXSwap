@@ -175,7 +175,7 @@ export function ChainSwitcher() {
           >
             <div
               className={clsx(
-                "fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm transition-opacity",
+                "fixed inset-0 z-[60] bg-black/60 transition-opacity",
                 open
                   ? "visible opacity-100"
                   : "invisible opacity-0 pointer-events-none"

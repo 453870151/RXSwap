@@ -5,6 +5,9 @@ const config: Config = {
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
+      maxWidth: {
+        md: "30rem",
+      },
       colors: {
         brand: {
           DEFAULT: "#E8B923",

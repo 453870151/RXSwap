@@ -117,11 +117,11 @@ export function TokenSelectModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:z-40 sm:items-center sm:p-4"
+      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
       onClick={onClose}
     >
       <div
-        className="glass flex h-[570px] w-full animate-fade-up flex-col rounded-t-3xl p-4 sm:max-w-md sm:rounded-3xl"
+        className="glass flex h-[570px] w-full animate-fade-up flex-col rounded-t-3xl bg-[rgb(19,19,19)] p-4 sm:max-w-[25rem] sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex shrink-0 items-center justify-between">

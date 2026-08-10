@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAccount, useConnect, usePublicClient } from "wagmi";
+import { useAccount, useConnect, usePublicClient, useSwitchChain } from "wagmi";
 import { parseUnits, maxUint256 } from "viem";
 import clsx from "clsx";
 import { bsc } from "wagmi/chains";
@@ -101,6 +101,25 @@ function paramValue(t?: SwapToken): string | undefined {
   return t ? (t.isNative ? t.symbol : t.address) : undefined;
 }
 
+// Human-readable names for chains the wallet might be connected to but which
+// aren't in our configured set (wagmi can't resolve chain.name for them, and
+// we don't want to surface a raw number like "1" in the UI).
+const KNOWN_CHAIN_NAMES: Record<number, string> = {
+  1: "Ethereum",
+  56: "BNB Smart Chain",
+  97: "BNB Smart Chain Testnet",
+  137: "Polygon",
+  42161: "Arbitrum",
+  10: "Optimism",
+  8453: "Base",
+  43114: "Avalanche",
+};
+
+function unsupportedChainLabel(chainId: number | undefined): string {
+  if (chainId === undefined) return "";
+  return KNOWN_CHAIN_NAMES[chainId] ?? `Chain ${chainId}`;
+}
+
 export function SwapCard() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -123,6 +142,7 @@ export function SwapCard() {
   const { approve } = useApprove();
   const { swap, isPending: swapping } = useSwapWrite();
   const { connect, connectors, isPending: connecting } = useConnect();
+  const { switchChainAsync, isPending: switchingChain } = useSwitchChain();
   const queryClient = useQueryClient();
 
   // Seed defaults from the per-chain default pair config (DEFAULT_TOKENS) so
@@ -148,10 +168,25 @@ export function SwapCard() {
   const inRef = useRef<HTMLInputElement>(null);
   const outRef = useRef<HTMLInputElement>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [slippageHintDismissed, setSlippageHintDismissed] = useState(false);
   const [showInverseRate, setShowInverseRate] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Swap/Limit segmented tab. "limit" is a placeholder for now — disabled and
+  // not clickable; only the swap flow is wired up.
+  const [activeTab, setActiveTab] = useState<"swap" | "limit">("swap");
   const settingsWrapRef = useRef<HTMLDivElement>(null);
+  // Which amount box is currently selected (focused). Defaults to the sell /
+  // Token1 box; the selected box gets a 1px white-tinted border. We only set on
+  // focus (never clear on blur) so exactly one box always appears selected.
+  const [focusedField, setFocusedField] = useState<"in" | "out">("in");
+  // Focus the Token1 (sell) input on mount so the caret is placed there and the
+  // box shows as selected immediately on page load.
+  useEffect(() => {
+    inRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { toast } = useToast();
 
@@ -303,11 +338,15 @@ export function SwapCard() {
   // avoid flicker every 5s — the quote updates silently as reserves change.
   const isLoading = isExactOut ? reverseQuote.isLoading : forwardQuote.isLoading;
 
-  // Effective slippage to display: the quote hook already resolved auto vs
-  // manual into `slippageBps`. Fall back to 0.5% (auto floor) / manual value
-  // when no quote is present yet.
-  const effectiveSlippageBps =
-    activeQuote?.slippageBps ?? (autoSlippage ? 50 : slippageBps);
+  // Effective slippage to display. Manual mode uses the local `slippageBps`
+  // so the rate line updates the instant the user picks a value — it must NOT
+  // wait for the quote to reload (an old quote is always present via
+  // keepPreviousData, which would otherwise show the stale quote slippage).
+  // Auto mode falls back to the quote-derived value (or the 0.5% floor before
+  // the first quote resolves).
+  const effectiveSlippageBps = autoSlippage
+    ? activeQuote?.slippageBps ?? 50
+    : slippageBps;
 
   // True when the user actually entered a non-zero amount in either box.
   // Used so the button only shows "請輸入數量" when nothing was typed — typing
@@ -380,6 +419,35 @@ export function SwapCard() {
     ? formatAmount(forwardQuote.data.amountOut, tokenOut?.decimals ?? 18)
     : "";
 
+  // Retrigger the CSS flash animation on the dependent amount input whenever a
+  // background price tick changes its displayed value (but never on user typing).
+  const prevPayRef = useRef(payValue);
+  const prevReceiveRef = useRef(receiveValue);
+  const prevTypedRef = useRef(typedValue);
+
+  function flashAmount(side: "in" | "out") {
+    const el = side === "in" ? inRef.current : outRef.current;
+    if (!el) return;
+    el.classList.remove("swap-value-flash");
+    void el.offsetWidth; // force reflow so the animation restarts cleanly
+    el.classList.add("swap-value-flash");
+  }
+
+  useEffect(() => {
+    const typedChanged = typedValue !== prevTypedRef.current;
+    if (!typedChanged) {
+      if (independentField === "in" && receiveValue !== prevReceiveRef.current) {
+        flashAmount("out");
+      }
+      if (independentField === "out" && payValue !== prevPayRef.current) {
+        flashAmount("in");
+      }
+    }
+    prevPayRef.current = payValue;
+    prevReceiveRef.current = receiveValue;
+    prevTypedRef.current = typedValue;
+  }, [payValue, receiveValue, typedValue, independentField]);
+
   function onTypeIn(v: string) {
     setIndependentField("in");
     setTypedValue(v);
@@ -450,6 +518,16 @@ export function SwapCard() {
     if (!tokenOut || balanceOut == null) return;
     setIndependentField("out");
     setTypedValue(formatAmount(balanceOut, tokenOut.decimals));
+  }
+
+  // Fill the "sell" input with a percentage of the Token1 balance. Native token
+  // max is handled separately (it keeps a small gas buffer); exact percentages
+  // for native tokens do NOT subtract the buffer because the user asked for it.
+  function setPercentIn(pct: number) {
+    if (!tokenIn || balanceIn == null) return;
+    setIndependentField("in");
+    const amount = (balanceIn * BigInt(pct)) / 100n;
+    setTypedValue(formatAmount(amount, tokenIn.decimals));
   }
 
   // Approve the sold token (tokenIn) for the router. Driven by the confirm
@@ -567,7 +645,7 @@ export function SwapCard() {
     buttonLabel = connecting ? t("common.connecting") : t("common.connectWallet");
   else if (unsupportedChain) {
     buttonLabel = t("swap.unsupportedChain", {
-      chain: chain?.name ?? String(connectedChain),
+      chain: unsupportedChainLabel(connectedChain),
     });
     disabled = true;
   } else if (!tokenIn || !tokenOut) {
@@ -597,91 +675,169 @@ export function SwapCard() {
   }
 
   return (
-    <div className="glass w-full max-w-md animate-fade-up rounded-3xl p-4 sm:p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-bold">{t("swap.title")}</h2>
+    <div className="w-full max-w-md animate-fade-up">
+      <div className="flex items-center justify-between px-1 pb-2 pt-1.5">
+        {/* Tabs: 兑换 (active) / 限价 (placeholder, disabled) */}
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("swap")}
+            className={clsx(
+              "rounded-full px-3.5 py-1.5 text-[15px] font-medium transition",
+              activeTab === "swap"
+                ? "bg-[#2a2a2a] text-white"
+                : "text-[#9b9b9b] hover:text-white"
+            )}
+          >
+            {t("swap.tabSwap")}
+          </button>
+          <button
+            type="button"
+            disabled
+            title={t("swap.tabLimitSoon")}
+            className="cursor-not-allowed rounded-full px-3.5 py-1.5 text-[15px] font-medium text-[#6b6b6b]"
+          >
+            {t("swap.tabLimit")}
+          </button>
+        </div>
         <div className="relative" ref={settingsWrapRef}>
           <button
             onClick={() => setShowSettings((s) => !s)}
             className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--hover)]"
-            title={t("common.settings")}
           >
-            ⚙
+            <svg
+              className="h-[18px] w-[18px]"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
           </button>
           {showSettings && (
-            <div className="absolute right-0 z-20 mt-2 w-96 max-w-[95vw] animate-fade-up rounded-2xl border border-[var(--glass-border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--card-shadow)]">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-xs font-semibold text-[var(--text-muted)]">
+            <div className="absolute right-[-5px] z-20 mt-2 w-[344px] max-w-[95vw] animate-fade-up rounded-3xl border border-[var(--glass-border)] bg-[#131313] p-4 shadow-[var(--card-shadow)]">
+              {/* Header */}
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-base font-bold text-[var(--text)]">
                   {t("swap.slippageTolerance")}
                 </p>
                 <button
                   onClick={() => setShowSettings(false)}
-                  className="text-[var(--text-muted)] transition hover:text-[var(--text)]"
                   aria-label={t("common.close")}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-white/5 hover:text-[var(--text)]"
                 >
-                  ✕
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                  </svg>
                 </button>
               </div>
-              <div className="flex items-center gap-1.5">
+
+              {/* Row: slippage limit — 自動 toggle only */}
+              <div className="flex items-center justify-between py-3">
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-[#d6d7de]">
+                  {t("swap.slippageLimit")}
+                  <span className="relative group">
+                    <button
+                      type="button"
+                      onClick={() => setSlippageHintDismissed((v) => !v)}
+                      aria-label={t("swap.slippageHint")}
+                      className="flex items-center text-[#666a7a] transition hover:text-[#9aa0b0]"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="9" />
+                        <line x1="12" y1="11" x2="12" y2="16" />
+                        <circle cx="12" cy="8" r="0.6" fill="currentColor" />
+                      </svg>
+                    </button>
+                    <div
+                      className={clsx(
+                        "absolute left-0 z-30 w-60 max-w-[calc(100vw-2rem)] rounded-xl border border-white/[0.08] bg-[#1e1e1e] p-2.5 text-xs leading-relaxed text-[#b8bccb] shadow-lg transition",
+                        "bottom-full mb-2 sm:bottom-auto sm:left-1/2 sm:top-full sm:-translate-x-1/2 sm:mt-2 sm:mb-0",
+                        slippageHintDismissed
+                          ? "pointer-events-none opacity-0"
+                          : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"
+                      )}
+                    >
+                      <div className="absolute bottom-[-7px] left-0 border-x-[7px] border-x-transparent border-t-[7px] border-t-white/[0.08] sm:hidden" />
+                      <div className="absolute bottom-[-6px] left-0 border-x-[6px] border-x-transparent border-t-[6px] border-t-[#1e1e1e] sm:hidden" />
+                      <div className="absolute top-[-7px] left-1/2 hidden -translate-x-1/2 border-x-[7px] border-x-transparent border-b-[7px] border-b-white/[0.08] sm:block" />
+                      <div className="absolute top-[-6px] left-1/2 hidden -translate-x-1/2 border-x-[6px] border-x-transparent border-b-[6px] border-b-[#1e1e1e] sm:block" />
+                      {t("swap.slippageHint")}
+                    </div>
+                  </span>
+                </span>
                 <button
                   onClick={() => {
                     setAutoSlippage(true);
                     setCustomSlippage("");
                   }}
                   className={clsx(
-                    "flex-1 rounded-xl py-2 text-sm font-semibold transition",
+                    "rounded-full px-5 py-1.5 text-[13px] font-semibold transition",
                     autoSlippage
-                      ? "bg-brand-gradient text-white"
-                      : "bg-[var(--input-bg)] hover:bg-[var(--hover)]"
+                      ? "bg-brand-gradient text-[#171717]"
+                      : "border border-white/[0.06] bg-white/5 text-[#cfd0d8] hover:bg-white/10"
                   )}
                 >
                   {t("swap.auto")}
                 </button>
-                {SLIPPAGE_OPTIONS.map((bps) => (
-                  <button
-                    key={bps}
-                    onClick={() => {
-                      setAutoSlippage(false);
-                      setSlippageBps(bps);
-                      setCustomSlippage("");
-                    }}
+              </div>
+
+              {/* Row: quick-select presets + custom input */}
+              <div className="border-t border-white/[0.06] py-3">
+                <p className="mb-2.5 text-sm font-semibold text-[#d6d7de]">
+                  {t("swap.quickSelect")}
+                </p>
+                <div className="flex items-center gap-1 rounded-2xl border border-white/[0.06] bg-white/[0.035] p-1">
+                  {SLIPPAGE_OPTIONS.map((bps) => (
+                    <button
+                      key={bps}
+                      onClick={() => {
+                        setAutoSlippage(false);
+                        setSlippageBps(bps);
+                        setCustomSlippage("");
+                      }}
+                      className={clsx(
+                        "flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition",
+                        !autoSlippage && slippageBps === bps
+                          ? "bg-brand-gradient text-[#171717]"
+                          : "text-[#8f93a3] hover:bg-white/5 hover:text-[#d6d7de]"
+                      )}
+                    >
+                      {bps / 100}%
+                    </button>
+                  ))}
+                  <div
                     className={clsx(
-                      "flex-1 rounded-xl py-2 text-sm font-semibold transition",
-                      !autoSlippage && slippageBps === bps
-                        ? "bg-brand-gradient text-white"
-                        : "bg-[var(--input-bg)] hover:bg-[var(--hover)]"
+                      "flex flex-[1.1] items-center justify-center rounded-[10px] py-2 text-[13px] font-semibold",
+                      !autoSlippage && !SLIPPAGE_OPTIONS.includes(slippageBps)
+                        ? "bg-brand-gradient text-[#171717]"
+                        : "bg-white/5 text-[#f5f5fa]"
                     )}
                   >
-                    {bps / 100}%
-                  </button>
-                ))}
-                <div
-                  className={clsx(
-                    "flex h-[34px] items-center rounded-xl px-2 text-sm font-semibold",
-                    !autoSlippage &&
-                      !SLIPPAGE_OPTIONS.includes(slippageBps)
-                      ? "bg-brand-gradient text-white"
-                      : "bg-[var(--input-bg)]"
-                  )}
-                >
-                  <input
-                    type="number"
-                    value={customSlippage}
-                    placeholder={formatSlippage(effectiveSlippageBps)}
-                    step="0.1"
-                    min="0.1"
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setCustomSlippage(v);
-                      const num = parseFloat(v);
-                      if (!isNaN(num)) {
-                        setAutoSlippage(false);
-                        setSlippageBps(Math.round(num * 100));
-                      }
-                    }}
-                    className="no-spinner w-12 bg-transparent text-right text-sm font-semibold outline-none placeholder:text-[var(--text-muted)]"
-                  />
-                  <span className="ml-0.5">%</span>
+                    <input
+                      type="number"
+                      value={customSlippage}
+                      placeholder={formatSlippage(effectiveSlippageBps)}
+                      step="0.1"
+                      min="0.1"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setCustomSlippage(v);
+                        const num = parseFloat(v);
+                        if (!isNaN(num)) {
+                          setAutoSlippage(false);
+                          setSlippageBps(Math.round(num * 100));
+                        }
+                      }}
+                      className="no-spinner w-10 bg-transparent text-center text-[13px] font-semibold outline-none placeholder:text-[var(--text-muted)]"
+                    />
+                    <span>%</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -690,32 +846,64 @@ export function SwapCard() {
       </div>
 
       {unsupportedChain && (
-        <div className="mb-3 flex items-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
           <span aria-hidden>⚠</span>
           <span>
             {t("swap.unsupportedChain", {
-              chain: chain?.name ?? String(connectedChain),
+              chain: unsupportedChainLabel(connectedChain),
             })}
           </span>
+          <button
+            type="button"
+            onClick={() => switchChainAsync({ chainId: SUPPORTED_CHAINS[0] })}
+            disabled={switchingChain}
+            className="ml-auto rounded-full bg-amber-400/90 px-3 py-1 text-xs font-semibold text-black transition hover:bg-amber-300 disabled:opacity-60"
+          >
+            {switchingChain ? t("common.switching") : t("common.switchNetwork")}
+          </button>
         </div>
       )}
 
       {/* From / Sell */}
-      <div className="input-card rounded-2xl p-3.5">
-        <div className="mb-1 flex items-center justify-between text-xs text-[var(--text-muted)]">
+      <div
+        className={clsx(
+          "group rounded-[20px] px-4 pb-2.5 pt-3 transition-colors",
+          focusedField === "in"
+            ? "border border-[rgba(255,255,255,0.12)]"
+            : "border border-transparent bg-[#1F1F1F] "
+        )}
+      >
+        <div className="text-sm-16 flex items-center justify-between text-color-muted">
           <span>{t("swap.youPay")}</span>
-          {tokenIn && (
-            <button onClick={setMax} className="hover:text-[var(--text)]">
-              {t("common.balance")} {formatAmount(balanceInNum, tokenIn.decimals)}
-            </button>
+          {tokenIn && balanceIn != null && balanceIn > 0n && (
+            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+              {[25, 50, 75].map((pct) => (
+                <button
+                  key={pct}
+                  type="button"
+                  onClick={() => setPercentIn(pct)}
+                  className="rounded-md bg-[#2a2a2a] px-1.5 py-0.5 text-[11px] font-medium text-white transition hover:bg-[#3a3a3a]"
+                >
+                  {pct}%
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={setMax}
+                className="rounded-md bg-[#2a2a2a] px-1.5 py-0.5 text-[11px] font-medium text-white transition hover:bg-[#3a3a3a]"
+              >
+                {t("swap.max")}
+              </button>
+            </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="mt-1 flex items-center justify-between gap-2">
           <input
             ref={inRef}
             inputMode="decimal"
-            placeholder="0.0"
+            placeholder="0"
             value={payValue}
+            onFocus={() => setFocusedField("in")}
             onChange={(e) => {
               const v = e.target.value;
               if (/^\d*\.?\d*$/.test(v)) onTypeIn(v);
@@ -728,9 +916,16 @@ export function SwapCard() {
                 outRef.current?.focus();
               }
             }}
-            className="w-full bg-transparent text-2xl font-semibold outline-none placeholder:text-[var(--text-muted)]"
+            className="w-full bg-transparent text-[32px] font-medium leading-tight-16 text-white outline-none placeholder:text-[#6b6b6b]"
           />
           <TokenButton token={tokenIn} onClick={() => setModalSide("in")} />
+        </div>
+        <div className="mb-2 mt-1 flex min-h-[18px] items-center justify-end text-xs text-[#6b6b6b]">
+          {tokenIn && (
+            <button onClick={setMax} className="transition text-balance">
+              {formatAmount(balanceInNum, tokenIn.decimals)} {tokenIn.symbol}
+            </button>
+          )}
         </div>
       </div>
 
@@ -738,36 +933,55 @@ export function SwapCard() {
       <div className="relative h-0">
         <button
           onClick={flip}
-          className="glass absolute left-1/2 top-1/2 z-10 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-xl text-lg transition hover:text-brand-soft"
+          className="absolute left-1/2 top-1/2 z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-4 border-[#0e0e0e] bg-[#2a2a2a] text-white transition hover:bg-[#333333]"
           title={t("swap.flip")}
         >
-          ↓
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 5v14M5 12l7 7 7-7" />
+          </svg>
         </button>
       </div>
 
       {/* To / Buy */}
-      <div className="input-card mt-2 rounded-2xl p-3.5">
-        <div className="mb-1 flex items-center justify-between text-xs text-[var(--text-muted)]">
-          <span>{t("swap.youReceive")}</span>
-          {tokenOut && balanceOut != null && (
-            <button onClick={setMaxOut} className="hover:text-[var(--text)]">
-              {t("common.balance")} {formatAmount(balanceOutNum, tokenOut.decimals)}
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
+      <div
+        className={clsx(
+          "mt-1 rounded-[20px] px-4 pb-2.5 pt-3 transition-colors",
+          focusedField === "out"
+            ? "border border-[rgba(255,255,255,0.12)]"
+            : "border border-transparent bg-[#1F1F1F] "
+        )}
+      >
+        <div className="text-sm-16 text-color-muted">{t("swap.youReceive")}</div>
+        <div className="mt-1 flex items-center justify-between gap-2">
           <input
             ref={outRef}
             inputMode="decimal"
-            placeholder="0.0"
+            placeholder="0"
             value={receiveValue}
+            onFocus={() => setFocusedField("out")}
             onChange={(e) => {
               const v = e.target.value;
               if (/^\d*\.?\d*$/.test(v)) onTypeOut(v);
             }}
-            className="w-full bg-transparent text-2xl font-semibold outline-none placeholder:text-[var(--text-muted)]"
+            className="w-full bg-transparent text-[32px] font-medium leading-tight-16 text-white outline-none placeholder:text-[#6b6b6b]"
           />
           <TokenButton token={tokenOut} onClick={() => setModalSide("out")} />
+        </div>
+        <div className="mb-2 mt-1 flex min-h-[18px] items-center justify-end text-xs text-[#6b6b6b]">
+          {tokenOut && balanceOut != null && (
+            <button onClick={setMaxOut} className="transition text-balance">
+              {formatAmount(balanceOutNum, tokenOut.decimals)} {tokenOut.symbol}
+            </button>
+          )}
         </div>
       </div>
 
@@ -782,7 +996,12 @@ export function SwapCard() {
           setShowConfirm(true);
         }}
         disabled={disabled}
-        className="btn-primary mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-bold"
+        className={clsx(
+          "mt-1 flex w-full items-center justify-center gap-2 rounded-[20px] py-4 text-[18px] font-semibold transition",
+          disabled
+            ? "cursor-not-allowed bg-[#1F1F1F] text-[#8a8a8a]"
+            : "bg-brand-gradient text-[#0b0b14] hover:brightness-105"
+        )}
       >
         {isFetchingQuote ? (
           <>
@@ -813,51 +1032,75 @@ export function SwapCard() {
         )}
       </button>
 
-      {hasAmountInput && (isFetchingQuote || activeQuote) && (
+      {hasAmountInput && activeQuote && (
         <div className="mt-3 space-y-3">
           {/* Rate + slippage single line, directly below the swap button */}
-          {isFetchingQuote ? (
-            <div className="shimmer h-3 w-2/3 rounded bg-[var(--input-bg)]" />
-          ) : activeQuote ? (
-            <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+          <div className="flex items-center justify-between text-[0.875rem] text-white/65">
+            <button
+              onClick={() => setShowInverseRate((v) => !v)}
+              className="flex items-center gap-1 hover:text-[var(--text)]"
+            >
+              {showInverseRate
+                ? `1 ${tokenOut?.symbol} = ${(1 / activeQuote.rate).toFixed(6)} ${tokenIn?.symbol}`
+                : `1 ${tokenIn?.symbol} = ${activeQuote.rate.toFixed(6)} ${tokenOut?.symbol}`}
+            </button>
+            <span className="group flex items-center gap-1">
               <button
-                onClick={() => setShowInverseRate((v) => !v)}
-                className="flex items-center gap-1 hover:text-[var(--text)]"
+                type="button"
+                onClick={() => setShowDetails((v) => !v)}
+                aria-label={showDetails ? t("swap.hideDetails") : t("swap.showDetails")}
+                className="text-white/65 transition group-hover:text-white hover:text-white"
               >
-                {showInverseRate
-                  ? `1 ${tokenOut?.symbol} ≈ ${(1 / activeQuote.rate).toFixed(6)} ${tokenIn?.symbol}`
-                  : `1 ${tokenIn?.symbol} ≈ ${activeQuote.rate.toFixed(6)} ${tokenOut?.symbol}`}
-              </button>
-              <span>
                 {t("swap.slippage")}：
                 {autoSlippage
                   ? `${t("swap.auto")} ${formatSlippage(effectiveSlippageBps)}%`
                   : `${formatSlippage(effectiveSlippageBps)}%`}
-              </span>
-            </div>
-          ) : null}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDetails((v) => !v)}
+                aria-label={showDetails ? t("swap.hideDetails") : t("swap.showDetails")}
+                className="flex items-center text-white/65 transition group-hover:text-white hover:text-white"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth={8}
+                  style={{
+                    width: 16,
+                    height: 16,
+                    color: "currentColor",
+                    transform: showDetails ? "rotate(90deg)" : "rotate(-90deg)",
+                    transition: "transform 200ms cubic-bezier(0.4, 0, 0.2, 1)",
+                  }}
+                >
+                  <path
+                    d="M15.7071 5.29289C16.0976 5.68342 16.0976 6.31658 15.7071 6.70711L10.4142 12L15.7071 17.2929C16.0976 17.6834 16.0976 18.3166 15.7071 18.7071C15.3166 19.0976 14.6834 19.0976 14.2929 18.7071L8.2929 12.7071C7.9024 12.3166 7.9024 11.6834 8.2929 11.2929L14.2929 5.29289C14.6834 4.90237 15.3166 4.90237 15.7071 5.29289Z"
+                    fill="currentColor"
+                    fillRule="evenodd"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+            </span>
+          </div>
 
-          {/* Detail card: minimum received / maximum paid, price impact */}
-          <div className="input-card space-y-1.5 rounded-2xl px-3.5 py-3 text-xs">
-            {isFetchingQuote ? (
-              <div className="space-y-2">
-                <div className="shimmer h-3 w-full rounded bg-[var(--input-bg)]" />
-                <div className="shimmer h-3 w-full rounded bg-[var(--input-bg)]" />
-                <div className="shimmer h-3 w-full rounded bg-[var(--input-bg)]" />
-                <div className="shimmer h-3 w-3/4 rounded bg-[var(--input-bg)]" />
-              </div>
-            ) : activeQuote ? (
-              <>
-                <Row
-                  label={isExactOut ? t("swap.maxPaid") : t("swap.minReceived")}
-                  value={
-                    "amountInMax" in activeQuote
-                      ? `${formatAmount(activeQuote.amountInMax, tokenIn?.decimals ?? 18)} ${tokenIn?.symbol}`
-                      : `${formatAmount(activeQuote.amountOutMin, tokenOut?.decimals ?? 18)} ${tokenOut?.symbol}`
-                  }
-                />
+          {/* Detail card: minimum received / maximum paid, price impact — collapsible, hidden by default */}
+          {showDetails && (
+          <div className="space-y-1.5 rounded-[20px] bg-[#1e1e1e] px-4 py-3 text-xs">
+            <>
+              <Row
+                label={isExactOut ? t("swap.maxPaid") : t("swap.minReceived")}
+                hint={t("swap.minReceivedHint")}
+                value={
+                  "amountInMax" in activeQuote
+                    ? `${formatAmount(activeQuote.amountInMax, tokenIn?.decimals ?? 18)} ${tokenIn?.symbol}`
+                    : `${formatAmount(activeQuote.amountOutMin, tokenOut?.decimals ?? 18)} ${tokenOut?.symbol}`
+                }
+              />
                 <Row
                   label={t("swap.priceImpact")}
+                  hint={t("swap.priceImpactHint")}
                   value={
                     activeQuote.priceImpact != null
                       ? formatPriceImpact(activeQuote.priceImpact)
@@ -871,13 +1114,15 @@ export function SwapCard() {
                 />
                 <Row
                   label={t("swap.tradingFee")}
+                  hint={t("swap.tradingFeeHint")}
                   value={`${formatSlippage(SWAP_FEE_BPS)}%`}
                 />
 
                 {/* Swap route: BNB → USDT (direct) or BNB → BNB → USDT (via wrapped, shown as BNB) */}
                 <div className="flex items-center justify-between gap-2">
-                  <span className="shrink-0 text-[var(--text-muted)]">
+                  <span className="flex shrink-0 items-center gap-1 text-white/65">
                     {t("swap.route")}
+                    <InfoTip text={t("swap.routeHint")} />
                   </span>
                   <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
                     {activeQuote.path.map((addr, i) => {
@@ -897,8 +1142,8 @@ export function SwapCard() {
                   </div>
                 </div>
               </>
-            ) : null}
           </div>
+          )}
         </div>
       )}
 
@@ -934,18 +1179,60 @@ export function SwapCard() {
   );
 }
 
+function InfoTip({ text }: { text: string }) {
+  const [dismissed, setDismissed] = useState(false);
+  return (
+    <span className="relative group">
+      <button
+        type="button"
+        onClick={() => setDismissed((v) => !v)}
+        aria-label={text}
+        className="flex items-center text-[#666a7a] transition hover:text-[#9aa0b0]"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="9" />
+          <line x1="12" y1="11" x2="12" y2="16" />
+          <circle cx="12" cy="8" r="0.6" fill="currentColor" />
+        </svg>
+      </button>
+      <div
+        className={clsx(
+          "absolute left-0 z-30 w-60 max-w-[calc(100vw-2rem)] rounded-xl border border-white/[0.08] bg-[#1e1e1e] p-2.5 text-xs leading-relaxed text-[#b8bccb] shadow-lg transition",
+          "bottom-full mb-2 sm:bottom-auto sm:left-1/2 sm:top-full sm:-translate-x-1/2 sm:mt-2 sm:mb-0",
+          dismissed
+            ? "pointer-events-none opacity-0"
+            : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"
+        )}
+      >
+        {/* Mobile: tooltip above icon → arrow points down, aligned under icon */}
+        <div className="absolute bottom-[-7px] left-0 border-x-[7px] border-x-transparent border-t-[7px] border-t-white/[0.08] sm:hidden" />
+        <div className="absolute bottom-[-6px] left-0 border-x-[6px] border-x-transparent border-t-[6px] border-t-[#1e1e1e] sm:hidden" />
+        {/* Desktop: tooltip below icon → arrow points up, centered */}
+        <div className="absolute top-[-7px] left-1/2 hidden -translate-x-1/2 border-x-[7px] border-x-transparent border-b-[7px] border-b-white/[0.08] sm:block" />
+        <div className="absolute top-[-6px] left-1/2 hidden -translate-x-1/2 border-x-[6px] border-x-transparent border-b-[6px] border-b-[#1e1e1e] sm:block" />
+        {text}
+      </div>
+    </span>
+  );
+}
+
 function Row({
   label,
   value,
   color,
+  hint,
 }: {
   label: string;
   value: string;
   color?: string;
+  hint?: string;
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-[var(--text-muted)]">{label}</span>
+    <div className="flex items-center justify-between gap-2">
+      <span className="flex items-center gap-1 text-white/65">
+        {label}
+        {hint && <InfoTip text={hint} />}
+      </span>
       <span className="font-medium" style={color ? { color } : undefined}>
         {value}
       </span>
@@ -965,20 +1252,25 @@ function TokenButton({
     return (
       <button
         onClick={onClick}
-        className="btn-primary shrink-0 rounded-full px-3 py-2 text-sm font-semibold"
+        className="flex shrink-0 items-center gap-1 rounded-full bg-brand-gradient px-4 py-2 text-sm font-semibold text-[#0b0b14] transition hover:brightness-105"
       >
-        {t("common.select")}
+        {t("swap.selectToken")}
+        <svg viewBox="0 0 24 24" fill="none" strokeWidth={8} style={{ width: 18, height: 18, color: "rgba(11,11,20,0.7)", transform: "rotate(-90deg)" }}>
+          <path d="M15.7071 5.29289C16.0976 5.68342 16.0976 6.31658 15.7071 6.70711L10.4142 12L15.7071 17.2929C16.0976 17.6834 16.0976 18.3166 15.7071 18.7071C15.3166 19.0976 14.6834 19.0976 14.2929 18.7071L8.2929 12.7071C7.9024 12.3166 7.9024 11.6834 8.2929 11.2929L14.2929 5.29289C14.6834 4.90237 15.3166 4.90237 15.7071 5.29289Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
+        </svg>
       </button>
     );
   }
   return (
     <button
       onClick={onClick}
-      className="flex shrink-0 items-center gap-2 rounded-full bg-[var(--input-bg)] py-1.5 pl-1.5 pr-3 transition hover:bg-[var(--hover)]"
+      className="flex shrink-0 items-center gap-2 rounded-full bg-sym-select py-1.5 pl-1.5 pr-3 transition"
     >
-      <TokenLogo token={token} size={26} />
-      <span className="text-sm font-semibold">{token.symbol}</span>
-      <span className="text-[var(--text-muted)]">▾</span>
+      <TokenLogo token={token} size={24} />
+      <span className="text-base font-medium text-white">{token.symbol}</span>
+      <svg viewBox="0 0 24 24" fill="none" strokeWidth={8} style={{ width: 18, height: 18, color: "#9b9b9b", transform: "rotate(-90deg)" }}>
+        <path d="M15.7071 5.29289C16.0976 5.68342 16.0976 6.31658 15.7071 6.70711L10.4142 12L15.7071 17.2929C16.0976 17.6834 16.0976 18.3166 15.7071 18.7071C15.3166 19.0976 14.6834 19.0976 14.2929 18.7071L8.2929 12.7071C7.9024 12.3166 7.9024 11.6834 8.2929 11.2929L14.2929 5.29289C14.6834 4.90237 15.3166 4.90237 15.7071 5.29289Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
+      </svg>
     </button>
   );
 }
