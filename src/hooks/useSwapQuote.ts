@@ -81,11 +81,19 @@ async function quoteWithRouter(
         args: [amountInWei, path],
       });
       const out = amounts[amounts.length - 1] as bigint;
-      if (out > 0n && (!best || out > best.amountOut)) {
-        const minOut = computeMinAmountOut(out, 0); // slippage applied by caller
+      // Fee-on-transfer output tokens deduct a transfer fee on the way out, so
+      // the amount the user actually receives is `out * (1 - fee)`. Discounting
+      // here keeps the displayed "received" and the on-chain `amountOutMin`
+      // honest; otherwise the quote is optimistic and a high tax can revert the
+      // SupportingFeeOnTransferTokens swap (real received < amountOutMin).
+      const feeBps = tokenOut.transferFeeBps ?? 0;
+      const netOut =
+        feeBps > 0 ? (out * BigInt(10000 - feeBps)) / 10000n : out;
+      if (netOut > 0n && (!best || netOut > best.amountOut)) {
+        const minOut = computeMinAmountOut(netOut, 0); // slippage applied by caller
         const rate = effectiveRate(
           amountInWei,
-          out,
+          netOut,
           tokenIn.decimals,
           tokenOut.decimals
         );
@@ -97,7 +105,7 @@ async function quoteWithRouter(
           path,
           amounts as readonly bigint[]
         );
-        best = { amountOut: out, amountOutMin: minOut, path, rate, priceImpact, router };
+        best = { amountOut: netOut, amountOutMin: minOut, path, rate, priceImpact, router };
       }
     } catch {
       // path not tradeable through this router

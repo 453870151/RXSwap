@@ -80,6 +80,8 @@
     "noRoute": "Insufficient liquidity for this pair",
     "confirmed": "Swap confirmed",
     "unsupportedChain": "{{chain}} is not supported",
+    "feeOnTransferNotice": "This is a transfer-fee token (tax / reflection). Only \"exact-input\" mode is supported — you cannot specify an exact amount to receive.",
+    "feeOnTransferReceiveHint": "Fee token: auto-calculated",
     "wrap": "Wrap",
     "unwrap": "Unwrap",
     "wrapSuccess": "Wrapped successfully",

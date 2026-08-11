@@ -109,6 +109,51 @@ export const ROUTER_ABI = [
     ],
     outputs: [{ name: "amounts", type: "uint256[]" }],
   },
+  // ---- Fee-on-transfer (tax / reflection) supporting variants ----
+  // These ONLY exist as exact-INPUT swaps — there is no
+  // `…ForExactTokensSupportingFeeOnTransferTokens`. The router measures the
+  // actual received balance after the output token's transfer fee is deducted,
+  // so the on-chain `amountOutMin` is checked against the real amount. Required
+  // whenever either side of the pair is a transfer-fee token; the UI forces
+  // exact-in in that case.
+  {
+    type: "function",
+    name: "swapExactTokensForTokensSupportingFeeOnTransferTokens",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "amountIn", type: "uint256" },
+      { name: "amountOutMin", type: "uint256" },
+      { name: "path", type: "address[]" },
+      { name: "to", type: "address" },
+      { name: "deadline", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "swapExactETHForTokensSupportingFeeOnTransferTokens",
+    stateMutability: "payable",
+    inputs: [
+      { name: "amountOutMin", type: "uint256" },
+      { name: "path", type: "address[]" },
+      { name: "to", type: "address" },
+      { name: "deadline", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "swapExactTokensForETHSupportingFeeOnTransferTokens",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "amountIn", type: "uint256" },
+      { name: "amountOutMin", type: "uint256" },
+      { name: "path", type: "address[]" },
+      { name: "to", type: "address" },
+      { name: "deadline", type: "uint256" },
+    ],
+    outputs: [],
+  },
   {
     type: "function",
     name: "addLiquidity",

@@ -136,6 +136,12 @@ export function useSwapQuoteOut({
       !!tokenIn &&
       !!tokenOut &&
       tokenIn.address !== tokenOut.address &&
+      //! A transfer-fee / tax / reflection token cannot be swapped in
+      //! exact-output mode — the router's SupportingFeeOnTransferTokens family
+      //! has no ForExactTokens variant. The UI forces exact-in for these pairs,
+      //! so this reverse quote must never run for them.
+      !tokenIn.isFeeOnTransfer &&
+      !tokenOut.isFeeOnTransfer &&
       !!amountOut &&
       parseFloat(amountOut) > 0,
     staleTime: 10_000,

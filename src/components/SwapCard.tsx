@@ -163,6 +163,12 @@ export function SwapCard() {
   // Native ↔ wrapped-native wrap/unwrap pair (BNB ↔ WBNB). When true we bypass
   // the router quote path and use a 1:1 wrap/unwrap flow (see isWrapUnwrapPair).
   const isWrap = isWrapUnwrapPair(tokenIn, tokenOut, chainId);
+  // True when either side is a transfer-fee / tax / reflection token. These
+  // cannot use exact-output (no ForExactTokens Supporting variant) and must
+  // route through the router's `SupportingFeeOnTransferTokens` family. We force
+  // exact-in for the whole trade and disable the "receive" box below.
+  const eitherFeeOnTransfer =
+    !!tokenIn?.isFeeOnTransfer || !!tokenOut?.isFeeOnTransfer;
   // Single source of truth: which field the user is editing, and the typed text.
   const [independentField, setIndependentField] = useState<"in" | "out">("in");
   const [typedValue, setTypedValue] = useState("");
@@ -230,6 +236,16 @@ export function SwapCard() {
     setIndependentField("in");
   }, [chainId, router, searchParams]);
 
+  // A transfer-fee token can only trade in exact-input mode. If the user had
+  // the "receive" box active (exact-out) and then selects a fee token, snap
+  // the independent field back to "in" so the trade can't be routed through an
+  // unsupported exact-output path.
+  useEffect(() => {
+    if (eitherFeeOnTransfer && independentField === "out") {
+      setIndependentField("in");
+    }
+  }, [eitherFeeOnTransfer, independentField]);
+
   // Reflect the chosen pair in the URL (currencyA = Token1, currencyB = Token2)
   // so the swap state is shareable / bookmarkable. Called only on explicit
   // user actions (token select, flip) — never on first mount, so opening the
@@ -244,7 +260,7 @@ export function SwapCard() {
     router.replace(qs ? `/swap?${qs}` : "/swap", { scroll: false });
   }
 
-  const isExactOut = independentField === "out";
+  const isExactOut = independentField === "out" && !eitherFeeOnTransfer;
 
   // Forward quote (typing in "pay") and reverse quote (typing in "receive").
   // Skipped entirely for the wrap/unwrap pair — it has no router route.
@@ -452,6 +468,9 @@ export function SwapCard() {
     setTypedValue(v);
   }
   function onTypeOut(v: string) {
+    // Fee-on-transfer tokens forbid exact-output mode, so typing in the
+    // "receive" box is disabled — the trade always keys off the "pay" box.
+    if (eitherFeeOnTransfer) return;
     setIndependentField("out");
     setTypedValue(v);
   }
@@ -515,14 +534,6 @@ export function SwapCard() {
     }
   }
 
-  // Same as setMax but for the "receive" (Token2) box: clicking the balance
-  // fills the input with the maximum Token2 balance (exact-out target).
-  function setMaxOut() {
-    if (!tokenOut || balanceOut == null) return;
-    setIndependentField("out");
-    setTypedValue(formatAmount(balanceOut, tokenOut.decimals));
-  }
-
   // Fill the "sell" input with a percentage of the Token1 balance. Native token
   // max is handled separately (it keeps a small gas buffer); exact percentages
   // for native tokens do NOT subtract the buffer because the user asked for it.
@@ -531,6 +542,15 @@ export function SwapCard() {
     setIndependentField("in");
     const amount = (balanceIn * BigInt(pct)) / 100n;
     setTypedValue(formatAmount(amount, tokenIn.decimals));
+  }
+
+  // Same as setMax but for the "receive" (Token2) box: clicking the balance
+  // fills the input with the maximum Token2 balance (exact-out target). Not
+  // allowed for fee-on-transfer tokens, which can't do exact-output.
+  function setMaxOut() {
+    if (!tokenOut || balanceOut == null || eitherFeeOnTransfer) return;
+    setIndependentField("out");
+    setTypedValue(formatAmount(balanceOut, tokenOut.decimals));
   }
 
   // Approve the sold token (tokenIn) for the router. Driven by the confirm
@@ -652,7 +672,11 @@ export function SwapCard() {
         path: q.path,
         router,
         to: address,
-        mode: isExactOut ? "exactOut" : "exactIn",
+        // Fee-on-transfer tokens must use the Supporting family, which only
+        // exists for exact-input swaps — force exact-in regardless of the
+        // selected field.
+        feeOnTransfer: eitherFeeOnTransfer,
+        mode: eitherFeeOnTransfer ? "exactIn" : isExactOut ? "exactOut" : "exactIn",
       });
       const receipt = await publicClient.waitForTransactionReceipt({
         hash: h,
@@ -813,6 +837,13 @@ export function SwapCard() {
         </div>
       )}
 
+      {eitherFeeOnTransfer && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          <span aria-hidden>⚠</span>
+          <span>{t("swap.feeOnTransferNotice")}</span>
+        </div>
+      )}
+
       {/* From / Sell */}
       <div
         className={clsx(
@@ -914,14 +945,18 @@ export function SwapCard() {
           <input
             ref={outRef}
             inputMode="decimal"
-            placeholder="0"
+            placeholder={eitherFeeOnTransfer ? t("swap.feeOnTransferReceiveHint") : "0"}
+            readOnly={eitherFeeOnTransfer}
             value={receiveValue}
             onFocus={() => setFocusedField("out")}
             onChange={(e) => {
               const v = e.target.value;
               if (/^\d*\.?\d*$/.test(v)) onTypeOut(v);
             }}
-            className="w-full bg-transparent text-[32px] font-medium leading-tight-16 text-white outline-none placeholder:text-[#6b6b6b]"
+            className={clsx(
+              "w-full bg-transparent text-[32px] font-medium leading-tight-16 text-white outline-none placeholder:text-[#6b6b6b]",
+              eitherFeeOnTransfer && "cursor-not-allowed opacity-80"
+            )}
           />
           <TokenButton token={tokenOut} onClick={() => setModalSide("out")} />
         </div>

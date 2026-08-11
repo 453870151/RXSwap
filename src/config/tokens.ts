@@ -13,6 +13,23 @@ export interface SwapToken {
   isNative?: boolean;
   /** Remote logo URL. When empty, falls back to a local image then a generated SVG badge. */
   logoURI?: string;
+  /**
+   * Transfer-fee / tax / reflection token. When true, the swap must route
+   * through the router's `SupportingFeeOnTransferTokens` family (exact-input
+   * only) and the quote should discount the output by `transferFeeBps` so the
+   * on-chain `amountOutMin` reflects the amount that actually arrives after the
+   * token's transfer fee is deducted. Without this, a tax output token can
+   * revert the tx (real received < amountOutMin) or show an optimistic quote.
+   */
+  isFeeOnTransfer?: boolean;
+  /**
+   * Known transfer fee in basis points (e.g. 100 = 1%). Feeds the quote
+   * discount for `amountOutMin` / displayed received. Omit (or 0) if the fee is
+   * unknown — the swap still executes via the Supporting family, but the
+   * "minimum received" may be optimistic and a high unknown fee could still
+   * revert the tx.
+   */
+  transferFeeBps?: number;
 }
 
 /** Zero-address placeholder standing in for the chain's native asset. */

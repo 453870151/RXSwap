@@ -80,6 +80,8 @@
     "noRoute": "當前交易對流動性不足",
     "confirmed": "兌換成功",
     "unsupportedChain": "當前不支援 {{chain}}",
+    "feeOnTransferNotice": "此代幣為轉賬扣稅代幣（稅幣 / 反射幣），僅支援「支付精確」模式，無法指定精確收到額。",
+    "feeOnTransferReceiveHint": "扣稅幣：自動計算",
     "wrap": "封裝",
     "unwrap": "解除封裝",
     "wrapSuccess": "封裝成功",

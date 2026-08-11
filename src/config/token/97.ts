@@ -25,7 +25,7 @@ export const tokens: SwapToken[] = [
   {
     address: "0x44004827f2F72566E12884A38f63f72F2a5143ea",
     symbol: "USDT",
-    name: "Tether USD",
+    name: "Tether USDT",
     decimals: 18,
     chainId: bscTestnet.id,
     logoURI:
@@ -53,5 +53,21 @@ export const tokens: SwapToken[] = [
     name: "Tether Token2",
     decimals: 18,
     chainId: bscTestnet.id,
+  },
+  {
+    address: "0xFD6cF199eAEeB9dd4d3CdE4425C465D34a9A36c7",
+    symbol: "TokenOrdinary",
+    name: "TokenOrdinary",
+    decimals: 18,
+    chainId: bscTestnet.id,
+  },
+  {
+    address: "0xB187DD6065B439bB48393B36309806b9A9B32226",
+    symbol: "TokenFee",
+    name: "TokenFee",
+    decimals: 18,
+    chainId: bscTestnet.id,
+    isFeeOnTransfer: true,
+    transferFeeBps: 500,
   },
 ];
