@@ -1,7 +1,9 @@
-import { bsc, bscTestnet } from "wagmi/chains";
+import { bsc, bscTestnet, arbitrum, arbitrumSepolia } from "wagmi/chains";
 import type { SwapToken } from "../tokens";
 import { tokens as bscTokens } from "./56";
 import { tokens as bscTestnetTokens } from "./97";
+import { tokens as arbitrumTokens } from "./42161";
+import { tokens as arbitrumSepoliaTokens } from "./421614";
 
 /**
  * Chain registry: chainId -> token list.
@@ -13,4 +15,6 @@ import { tokens as bscTestnetTokens } from "./97";
 export const CHAIN_TOKENS: Record<number, SwapToken[]> = {
   [bsc.id]: bscTokens,
   [bscTestnet.id]: bscTestnetTokens,
+  [arbitrum.id]: arbitrumTokens,
+  [arbitrumSepolia.id]: arbitrumSepoliaTokens,
 };

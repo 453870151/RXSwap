@@ -11,13 +11,24 @@
    - 添加流动性（含池子储备显示、按池比例自动平衡两边数量）
    - 删除流动性（25/50/75/100% 比例）
    - 当前钱包 LP 列表（已知代币交叉查询 `factory.getPair` + `pair.balanceOf`，纯链上无 API）
-3. **链切换**：BSC 主网 / BSC 测试网，可切换
+3. **链切换**：BSC 主网 / BSC 测试网 / Arbitrum One / Arbitrum Sepolia，可切换
 4. **钱包连接**：`injected()` 连接器（覆盖 MetaMask 及所有注入式 BSC 钱包）
 5. **主题**：light / dark / system，含防闪烁内联脚本
 
 ## 合约（复用参考项目自有地址，双 Router 当前用同一地址，后续改 `SECONDARY` 即可）
-- Router / Factory / WBNB / INIT_CODE_HASH：见 `src/config/contracts.ts`
+- Router / Factory / WBNB / WETH / INIT_CODE_HASH：见 `src/config/contracts.ts`
 - 标准 V2 ABI：`src/config/abis/{router,factory,pair,erc20}.ts`
+
+## 支持网络
+| 网络 | Chain ID | 原生币 | Router / Factory | 状态 |
+|---|---|---|---|---|
+| BNB Smart Chain | 56 | BNB | 已配置（自有 + PancakeSwap 回退） | 可用 |
+| BSC Testnet | 97 | tBNB | 已配置 | 可用 |
+| Arbitrum One | 42161 | ETH | **零地址占位**（待部署） | 仅链切换 / ETH↔WETH 封装 |
+| Arbitrum Sepolia | 421614 | ETH | **零地址占位**（待部署） | 仅链切换 / ETH↔WETH 封装 |
+
+- 原生币包装合约经 `WNATIVE[chainId]` 映射（BSC→WBNB、Arbitrum→WETH）；原生币↔包装币互转走 `useNativeWrap`。WETH 为真实地址，故 Arbitrum 上封装/解封装可用；兑换/流动性因 Router/Factory 为零地址占位会 revert，待部署真实地址后启用。
+- RPC：BSC 用官方 dataseed；Arbitrum 用官方 `arb1.arbitrum.io/rpc` 与 `sepolia-rollup.arbitrum.io/rpc`，均可用 `NEXT_PUBLIC_ARB_RPC` / `NEXT_PUBLIC_ARB_SEPOLIA_RPC` 环境变量覆盖。
 
 ## 本地运行
 ```bash

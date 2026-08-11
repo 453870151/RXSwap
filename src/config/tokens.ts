@@ -1,4 +1,4 @@
-import { bsc, bscTestnet } from "wagmi/chains";
+import { bsc, bscTestnet, arbitrum, arbitrumSepolia } from "wagmi/chains";
 import { WNATIVE } from "./contracts";
 import { CHAIN_TOKENS } from "./token";
 
@@ -54,6 +54,18 @@ const NATIVE_META: Record<
     name: "BNB Testnet",
     logoURI:
       "https://tokens.pancakeswap.finance/images/0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c.png",
+  },
+  [arbitrum.id]: {
+    symbol: "ETH",
+    name: "Ethereum",
+    logoURI:
+      "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/arbitrum/assets/0x82aF49447D8a07e3bd95BD0d56f35241523fBab1/logo.png",
+  },
+  [arbitrumSepolia.id]: {
+    symbol: "ETH",
+    name: "Ethereum",
+    logoURI:
+      "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/arbitrum/assets/0x82aF49447D8a07e3bd95BD0d56f35241523fBab1/logo.png",
   },
 };
 
@@ -118,6 +130,14 @@ export const DEFAULT_TOKENS: Record<
   [bscTestnet.id]: {
     tokenIn: ZERO, // tBNB
     tokenOut: "0x44004827f2F72566E12884A38f63f72F2a5143ea", // USDT (testnet)
+  },
+  [arbitrum.id]: {
+    tokenIn: ZERO, // ETH
+    tokenOut: WNATIVE[arbitrum.id], // WETH
+  },
+  [arbitrumSepolia.id]: {
+    tokenIn: ZERO, // ETH
+    tokenOut: WNATIVE[arbitrumSepolia.id], // WETH
   },
 };
 
