@@ -34,28 +34,51 @@ import {
   priceImpactColor,
 } from "@/lib/format";
 import { getChainMeta, SUPPORTED_CHAINS } from "@/config/chains";
+import { SlippageSettings, loadSavedSlippage } from "./SlippageSettings";
+import { useNativeWrap, useWnativeAllowance } from "@/hooks/useNativeWrap";
 import type { Address } from "@/lib/swap";
 
-const SLIPPAGE_OPTIONS = [10, 50, 100]; // 0.1% / 0.5% / 1%
-const SLIPPAGE_STORAGE_KEY = "rxswap-slippage";
+// True when the chosen pair is the native coin against its own wrapped asset
+// (e.g. BNB ↔ WBNB on BSC). This is NOT a real swap — it's a wrap/unwrap
+// against the WNATIVE contract, so we bypass the router quote/route machinery
+// entirely and show a 1:1, no-slippage wrap/unwrap UI instead.
+function isWrapUnwrapPair(
+  tokenIn: SwapToken | undefined,
+  tokenOut: SwapToken | undefined,
+  chainId: number
+): boolean {
+  if (!tokenIn || !tokenOut) return false;
+  const wnative = WNATIVE[chainId];
+  if (!wnative) return false;
+  const inNativeOutWrapped =
+    tokenIn.isNative && !tokenOut.isNative && tokenOut.address.toLowerCase() === wnative.toLowerCase();
+  const inWrappedOutNative =
+    !tokenIn.isNative && tokenIn.address.toLowerCase() === wnative.toLowerCase() && tokenOut.isNative;
+  return Boolean(inNativeOutWrapped || inWrappedOutNative);
+}
 
 // Build a display token for a route-hop address. The wrapped-native node is
-// mapped to the native asset (BNB) for intuitive display (design decision:
-// 方案 A), reusing the native token's logo; everywhere else it falls back to a
-// generated badge.
-function buildRouteToken(addr: Address, chainId: number): SwapToken {
+// shown as whichever side of the trade is the wrapped/native token: a native
+// BNB→USDT trade still routes through WBNB internally, so it should display as
+// BNB; but a WBNB→USDT trade (where tokenIn is the wrapped coin) should display
+// as WBNB — not the native coin.
+function buildRouteToken(
+  addr: Address,
+  chainId: number,
+  tokenIn: SwapToken | undefined,
+  tokenOut: SwapToken | undefined
+): SwapToken {
   const wnative = WNATIVE[chainId];
-  if (addr.toLowerCase() === wnative.toLowerCase()) {
-    const native = getNativeToken(chainId);
-    return {
-      address: addr,
-      symbol: native.symbol,
-      name: native.name,
-      decimals: native.decimals,
-      chainId,
-      logoURI: native.logoURI,
-    };
+  const addrLower = addr.toLowerCase();
+  const inAddr = tokenIn?.address.toLowerCase();
+  const outAddr = tokenOut?.address.toLowerCase();
+  if (addrLower === wnative.toLowerCase()) {
+    if (inAddr === wnative.toLowerCase()) return tokenIn!;
+    if (outAddr === wnative.toLowerCase()) return tokenOut!;
+    return getNativeToken(chainId);
   }
+  if (inAddr && addrLower === inAddr) return tokenIn!;
+  if (outAddr && addrLower === outAddr) return tokenOut!;
   return (
     getTokenByAddress(chainId, addr) ?? {
       address: addr,
@@ -65,23 +88,6 @@ function buildRouteToken(addr: Address, chainId: number): SwapToken {
       chainId,
     }
   );
-}
-
-function loadSavedSlippage(): { auto: boolean; bps: number } {
-  if (typeof window === "undefined") return { auto: true, bps: 50 };
-  try {
-    const raw = localStorage.getItem(SLIPPAGE_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (
-        typeof parsed.auto === "boolean" &&
-        typeof parsed.bps === "number"
-      ) {
-        return { auto: parsed.auto, bps: parsed.bps };
-      }
-    }
-  } catch {}
-  return { auto: true, bps: 50 };
 }
 
 // Map a URL param value ("BNB" for native, an address for ERC20) back to a
@@ -144,6 +150,7 @@ export function SwapCard() {
   const { connect, connectors, isPending: connecting } = useConnect();
   const { switchChainAsync, isPending: switchingChain } = useSwitchChain();
   const queryClient = useQueryClient();
+  const { deposit, withdraw, approveWnative } = useNativeWrap();
 
   // Seed defaults from the per-chain default pair config (DEFAULT_TOKENS) so
   // neither field flashes an empty "Select" before the effect runs.
@@ -153,22 +160,19 @@ export function SwapCard() {
   const [tokenOut, setTokenOut] = useState<SwapToken | undefined>(() =>
     linkedOut ?? getDefaultTokenOut(chainId)
   );
+  // Native ↔ wrapped-native wrap/unwrap pair (BNB ↔ WBNB). When true we bypass
+  // the router quote path and use a 1:1 wrap/unwrap flow (see isWrapUnwrapPair).
+  const isWrap = isWrapUnwrapPair(tokenIn, tokenOut, chainId);
   // Single source of truth: which field the user is editing, and the typed text.
   const [independentField, setIndependentField] = useState<"in" | "out">("in");
   const [typedValue, setTypedValue] = useState("");
   const savedSlippage = useMemo(() => loadSavedSlippage(), []);
   const [slippageBps, setSlippageBps] = useState(savedSlippage.bps);
   const [autoSlippage, setAutoSlippage] = useState(savedSlippage.auto);
-  // Custom slippage typed into the input. Empty unless the user is actively
-  // entering a manual value; presets/auto clear it so the input shows the
-  // effective value as a placeholder instead of forcing deletion.
-  const [customSlippage, setCustomSlippage] = useState("");
   const [modalSide, setModalSide] = useState<"in" | "out" | null>(null);
   // Refs to the two amount inputs so Tab can move focus between them.
   const inRef = useRef<HTMLInputElement>(null);
   const outRef = useRef<HTMLInputElement>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [slippageHintDismissed, setSlippageHintDismissed] = useState(false);
   const [showInverseRate, setShowInverseRate] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -176,7 +180,6 @@ export function SwapCard() {
   // Swap/Limit segmented tab. "limit" is a placeholder for now — disabled and
   // not clickable; only the swap flow is wired up.
   const [activeTab, setActiveTab] = useState<"swap" | "limit">("swap");
-  const settingsWrapRef = useRef<HTMLDivElement>(null);
   // Which amount box is currently selected (focused). Defaults to the sell /
   // Token1 box; the selected box gets a 1px white-tinted border. We only set on
   // focus (never clear on blur) so exactly one box always appears selected.
@@ -189,36 +192,6 @@ export function SwapCard() {
   }, []);
 
   const { toast } = useToast();
-
-  // Close the slippage popup when clicking anywhere outside it (including the
-  // gear toggle, which stays inside this wrapper so its own onClick still toggles).
-  useEffect(() => {
-    if (!showSettings) return;
-    function onPointerDown(e: MouseEvent | TouchEvent) {
-      if (
-        settingsWrapRef.current &&
-        !settingsWrapRef.current.contains(e.target as Node)
-      ) {
-        setShowSettings(false);
-      }
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("touchstart", onPointerDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("touchstart", onPointerDown);
-    };
-  }, [showSettings]);
-
-  // Persist slippage preference across reloads.
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        SLIPPAGE_STORAGE_KEY,
-        JSON.stringify({ auto: autoSlippage, bps: slippageBps })
-      );
-    } catch {}
-  }, [autoSlippage, slippageBps]);
 
   // On chain settle / change: re-resolve the URL tokens against the *new*
   // chainId rather than discarding them. This is essential because on first
@@ -274,17 +247,18 @@ export function SwapCard() {
   const isExactOut = independentField === "out";
 
   // Forward quote (typing in "pay") and reverse quote (typing in "receive").
+  // Skipped entirely for the wrap/unwrap pair — it has no router route.
   const forwardQuote = useSwapQuote({
-    tokenIn,
-    tokenOut,
+    tokenIn: isWrap ? undefined : tokenIn,
+    tokenOut: isWrap ? undefined : tokenOut,
     amountIn: isExactOut ? "" : typedValue,
     slippageBps,
     autoSlippage,
     chainId,
   });
   const reverseQuote = useSwapQuoteOut({
-    tokenIn,
-    tokenOut,
+    tokenIn: isWrap ? undefined : tokenIn,
+    tokenOut: isWrap ? undefined : tokenOut,
     amountOut: isExactOut ? typedValue : "",
     slippageBps,
     autoSlippage,
@@ -299,9 +273,9 @@ export function SwapCard() {
   const { data: balanceIn } = useTokenBalance(tokenIn, address, chainId);
   const { data: balanceOut } = useTokenBalance(tokenOut, address, chainId);
   const { allowance, refetch: refetchAllowance } = useTokenAllowance(
-    tokenIn,
+    isWrap ? undefined : tokenIn,
     address,
-    tokenIn && (activeQuote?.router ?? getRouterAddresses(chainId).primary),
+    isWrap ? undefined : tokenIn && (activeQuote?.router ?? getRouterAddresses(chainId).primary),
     chainId
   );
 
@@ -331,6 +305,28 @@ export function SwapCard() {
   const amountOutMinWei = isExactOut
     ? amountOutWei
     : forwardQuote.data?.amountOutMin ?? 0n;
+
+  // Wrap/unwrap: the spent and received amounts are identical (1:1). The
+  // "independent field" value is the source of truth; both boxes mirror it.
+  const wrapWei = useMemo(() => {
+    if (!isWrap || !tokenIn || !typedValue) return 0n;
+    try {
+      return parseUnits(typedValue, tokenIn.decimals);
+    } catch {
+      return 0n;
+    }
+  }, [isWrap, tokenIn, typedValue]);
+
+  // WBNB→BNB (unwrap) requires the user to first approve WBNB to the WNATIVE
+  // contract. BNB→WBNB (wrap) needs no approval (native value is sent directly).
+  const wnative = WNATIVE[chainId];
+  const { data: wnativeAllowance, refetch: refetchWnativeAllowance } = useWnativeAllowance(
+    isWrap && !tokenIn?.isNative ? (tokenIn?.address as Address) : undefined,
+    isWrap && wnative ? wnative : undefined,
+    address
+  );
+  const wrapNeedsApproval =
+    isWrap && !tokenIn?.isNative && wrapWei > 0n && (wnativeAllowance ?? 0n) < wrapWei;
 
   // `isLoading` is true only on the very first fetch (no data yet).
   // Background polling refetches keep `data` (via keepPreviousData) and are
@@ -381,15 +377,11 @@ export function SwapCard() {
   const quoteStale = hasAmountInput && currentQuoteKey !== null && currentQuoteKey !== syncedQuoteKey;
   const isFetchingQuote = isLoading || quoteStale;
 
-  const needsApproval =
-    !!tokenIn &&
-    !tokenIn.isNative &&
-    payWei > 0n &&
-    allowance < payWei;
+  const needsApproval = isWrap ? wrapNeedsApproval : !!tokenIn && !tokenIn.isNative && payWei > 0n && allowance < payWei;
 
   const balanceInNum = balanceIn ?? 0n;
   const balanceOutNum = balanceOut ?? 0n;
-  const insufficient = payWei > balanceInNum;
+  const insufficient = isWrap ? wrapWei > balanceInNum : payWei > balanceInNum;
 
   // Displayed input values.
   // - The box the user is actively typing in always shows `typedValue`
@@ -404,14 +396,21 @@ export function SwapCard() {
   // (derived) box is blanked instead of showing the stale previous result. The
   // focused box keeps `typedValue` untouched. So: typing Token1 clears Token2,
   // and typing Token2 clears Token1 — until the new quote lands.
-  const payValue = isExactOut
+  const payValue = isWrap
+    ? // 1:1 wrap/unwrap: the dependent box simply mirrors the typed value.
+      independentField === "in"
+      ? typedValue
+      : typedValue
+    : isExactOut
     ? !hasAmountInput || isFetchingQuote
       ? ""
       : reverseQuote.data
       ? formatAmount(reverseQuote.data.amountIn, tokenIn?.decimals ?? 18)
       : ""
     : typedValue;
-  const receiveValue = isExactOut
+  const receiveValue = isWrap
+    ? typedValue
+    : isExactOut
     ? typedValue
     : !hasAmountInput || isFetchingQuote
     ? ""
@@ -487,13 +486,15 @@ export function SwapCard() {
     }
     setTokenIn(nextIn);
     setTokenOut(nextOut);
-    // Requirement 1: if the user already typed an amount, KEEP it after the
-    // token change. The independent field's value stays attached to its box and
-    // the opposite box's quote recomputes for the new token automatically.
-    // Only when nothing was typed do we reset to a clean state.
-    if (!typedValue) {
+    // Only when the Token1 (sell) token actually changes do we clear both input
+    // boxes and refocus Token1. Changing Token2 keeps the typed amount attached
+    // to its box so the opposite quote recomputes for the new token automatically.
+    if (side === "in" && nextIn?.address !== tokenIn?.address) {
       setTypedValue("");
       setIndependentField("in");
+      // Defer focus until after the select modal closes and the inputs
+      // re-render, so the caret lands in the Token1 box.
+      setTimeout(() => inRef.current?.focus(), 0);
     }
     // Keep the URL in sync with the chosen pair so the swap is shareable.
     updateUrl(nextIn, nextOut);
@@ -504,9 +505,11 @@ export function SwapCard() {
     setIndependentField("in");
     if (tokenIn.isNative) {
       const buffer = parseUnits("0.01", tokenIn.decimals);
-      setTypedValue(
-        formatAmount(balanceIn > buffer ? balanceIn - buffer : 0n, tokenIn.decimals)
-      );
+      // Keep a small gas buffer, but never floor the input to 0. If the
+      // balance is too small to leave the buffer, fill the whole balance so
+      // the box shows a real number instead of "0".
+      const maxWei = balanceIn > buffer ? balanceIn - buffer : balanceIn;
+      setTypedValue(formatAmount(maxWei, tokenIn.decimals));
     } else {
       setTypedValue(formatAmount(balanceIn, tokenIn.decimals));
     }
@@ -555,6 +558,76 @@ export function SwapCard() {
     } catch {
       // Wallet rejection or other error — swallow. The modal stays open with
       // the button reset, so the user can retry directly.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Wrap / unwrap the native asset against the WNATIVE contract (BNB↔WBNB).
+  // 1:1 and slippage-free. BNB→WBNB calls `deposit` (value = BNB, no approval);
+  // WBNB→BNB calls `withdraw` (after approving WBNB to the WNATIVE contract).
+  async function doWrap() {
+    if (!tokenIn || !tokenOut || !address || !publicClient || !wnative) return;
+    if (wrapWei <= 0n) return;
+    setBusy(true);
+    try {
+      let h: `0x${string}` | undefined;
+      if (!tokenIn.isNative) {
+        // Unwrap path: WBNB → BNB. Approve WBNB to the WNATIVE contract first
+        // if the allowance is short.
+        if (wrapNeedsApproval) {
+          const approveHash = await approveWnative(tokenIn.address as Address, wnative);
+          // Wait for the approval to be mined before reading the allowance —
+          // otherwise the refetch still returns the pre-approval value and the
+          // user would have to refresh to trade. Then continue to withdraw so
+          // a single click completes approve + unwrap.
+          await publicClient.waitForTransactionReceipt({
+            hash: approveHash,
+            timeout: 180_000,
+          });
+          await refetchWnativeAllowance();
+        }
+        h = await withdraw(wnative, wrapWei);
+      } else {
+        // Wrap path: BNB → WBNB. No approval needed (native value is sent).
+        h = await deposit(wnative, wrapWei);
+      }
+      // Wait for the on-chain action to be mined BEFORE refreshing balances —
+      // otherwise the balance query still returns the pre-tx value and the
+      // input boxes wouldn't update until a manual refresh.
+      if (h) {
+        await publicClient.waitForTransactionReceipt({ hash: h, timeout: 180_000 });
+      }
+      queryClient.invalidateQueries({ queryKey: ["balance", chainId] });
+      setTypedValue("");
+      setIndependentField("in");
+      const explorer = getChainMeta(chainId)?.explorer;
+      toast({
+        type: "success",
+        position: "top-right",
+        message: (
+          <span className="flex flex-col gap-1">
+            <span className="font-semibold">{t("swap.transactionSuccess")}</span>
+            {explorer && h ? (
+              <a
+                href={`${explorer}/tx/${h}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 text-xs text-accent-soft hover:underline"
+              >
+                <span className="font-mono">{`${h.slice(0, 8)}…${h.slice(-6)}`}</span>
+                <span>{t("common.viewExplorer")}</span>
+              </a>
+            ) : (
+              h && (
+                <span className="font-mono text-xs opacity-80">{`${h.slice(0, 8)}…${h.slice(-6)}`}</span>
+              )
+            )}
+          </span>
+        ),
+      });
+    } catch {
+      // Wallet rejection or other error — swallow; the user can retry.
     } finally {
       setBusy(false);
     }
@@ -654,6 +727,17 @@ export function SwapCard() {
   } else if (!hasAmountInput) {
     buttonLabel = t("swap.enterAmount");
     disabled = true;
+  } else if (isWrap) {
+    // Wrap/unwrap has no quote — the only gating is balance. While the
+    // on-chain action runs we keep the direction label (封装/解除封装) and
+    // only disable the button; no "confirming" text and no spinner.
+    if (insufficient) {
+      buttonLabel = t("swap.insufficientBalance", { symbol: tokenIn?.symbol ?? "" });
+      disabled = true;
+    } else {
+      buttonLabel = tokenIn.isNative ? t("swap.wrap") : t("swap.unwrap");
+      disabled = busy;
+    }
   } else if (isFetchingQuote) {
     // Quote is loading for the first time or the user changed the amount/
     // tokens and the new quote hasn't resolved yet. Show a spinner + fetching
@@ -700,149 +784,14 @@ export function SwapCard() {
             {t("swap.tabLimit")}
           </button>
         </div>
-        <div className="relative" ref={settingsWrapRef}>
-          <button
-            onClick={() => setShowSettings((s) => !s)}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--hover)]"
-          >
-            <svg
-              className="h-[18px] w-[18px]"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </button>
-          {showSettings && (
-            <div className="absolute right-[-5px] z-20 mt-2 w-[344px] max-w-[95vw] animate-fade-up rounded-3xl border border-[var(--glass-border)] bg-[#131313] p-4 shadow-[var(--card-shadow)]">
-              {/* Header */}
-              <div className="mb-1 flex items-center justify-between">
-                <p className="text-base font-bold text-[var(--text)]">
-                  {t("swap.slippageTolerance")}
-                </p>
-                <button
-                  onClick={() => setShowSettings(false)}
-                  aria-label={t("common.close")}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-white/5 hover:text-[var(--text)]"
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Row: slippage limit — 自動 toggle only */}
-              <div className="flex items-center justify-between py-3">
-                <span className="flex items-center gap-1.5 text-sm font-semibold text-[#d6d7de]">
-                  {t("swap.slippageLimit")}
-                  <span className="relative group">
-                    <button
-                      type="button"
-                      onClick={() => setSlippageHintDismissed((v) => !v)}
-                      aria-label={t("swap.slippageHint")}
-                      className="flex items-center text-[#666a7a] transition hover:text-[#9aa0b0]"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="9" />
-                        <line x1="12" y1="11" x2="12" y2="16" />
-                        <circle cx="12" cy="8" r="0.6" fill="currentColor" />
-                      </svg>
-                    </button>
-                    <div
-                      className={clsx(
-                        "absolute left-0 z-30 w-60 max-w-[calc(100vw-2rem)] rounded-xl border border-white/[0.08] bg-[#1e1e1e] p-2.5 text-xs leading-relaxed text-[#b8bccb] shadow-lg transition",
-                        "bottom-full mb-2 sm:bottom-auto sm:left-1/2 sm:top-full sm:-translate-x-1/2 sm:mt-2 sm:mb-0",
-                        slippageHintDismissed
-                          ? "pointer-events-none opacity-0"
-                          : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"
-                      )}
-                    >
-                      <div className="absolute bottom-[-7px] left-0 border-x-[7px] border-x-transparent border-t-[7px] border-t-white/[0.08] sm:hidden" />
-                      <div className="absolute bottom-[-6px] left-0 border-x-[6px] border-x-transparent border-t-[6px] border-t-[#1e1e1e] sm:hidden" />
-                      <div className="absolute top-[-7px] left-1/2 hidden -translate-x-1/2 border-x-[7px] border-x-transparent border-b-[7px] border-b-white/[0.08] sm:block" />
-                      <div className="absolute top-[-6px] left-1/2 hidden -translate-x-1/2 border-x-[6px] border-x-transparent border-b-[6px] border-b-[#1e1e1e] sm:block" />
-                      {t("swap.slippageHint")}
-                    </div>
-                  </span>
-                </span>
-                <button
-                  onClick={() => {
-                    setAutoSlippage(true);
-                    setCustomSlippage("");
-                  }}
-                  className={clsx(
-                    "rounded-full px-5 py-1.5 text-[13px] font-semibold transition",
-                    autoSlippage
-                      ? "bg-brand-gradient text-[#171717]"
-                      : "border border-white/[0.06] bg-white/5 text-[#cfd0d8] hover:bg-white/10"
-                  )}
-                >
-                  {t("swap.auto")}
-                </button>
-              </div>
-
-              {/* Row: quick-select presets + custom input */}
-              <div className="border-t border-white/[0.06] py-3">
-                <p className="mb-2.5 text-sm font-semibold text-[#d6d7de]">
-                  {t("swap.quickSelect")}
-                </p>
-                <div className="flex items-center gap-1 rounded-2xl border border-white/[0.06] bg-white/[0.035] p-1">
-                  {SLIPPAGE_OPTIONS.map((bps) => (
-                    <button
-                      key={bps}
-                      onClick={() => {
-                        setAutoSlippage(false);
-                        setSlippageBps(bps);
-                        setCustomSlippage("");
-                      }}
-                      className={clsx(
-                        "flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition",
-                        !autoSlippage && slippageBps === bps
-                          ? "bg-brand-gradient text-[#171717]"
-                          : "text-[#8f93a3] hover:bg-white/5 hover:text-[#d6d7de]"
-                      )}
-                    >
-                      {bps / 100}%
-                    </button>
-                  ))}
-                  <div
-                    className={clsx(
-                      "flex flex-[1.1] items-center justify-center rounded-[10px] py-2 text-[13px] font-semibold",
-                      !autoSlippage && !SLIPPAGE_OPTIONS.includes(slippageBps)
-                        ? "bg-brand-gradient text-[#171717]"
-                        : "bg-white/5 text-[#f5f5fa]"
-                    )}
-                  >
-                    <input
-                      type="number"
-                      value={customSlippage}
-                      placeholder={formatSlippage(effectiveSlippageBps)}
-                      step="0.1"
-                      min="0.1"
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setCustomSlippage(v);
-                        const num = parseFloat(v);
-                        if (!isNaN(num)) {
-                          setAutoSlippage(false);
-                          setSlippageBps(Math.round(num * 100));
-                        }
-                      }}
-                      className="no-spinner w-10 bg-transparent text-center text-[13px] font-semibold outline-none placeholder:text-[var(--text-muted)]"
-                    />
-                    <span>%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        <SlippageSettings
+          value={{ auto: autoSlippage, bps: slippageBps }}
+          onChange={({ auto, bps }) => {
+            setAutoSlippage(auto);
+            setSlippageBps(bps);
+          }}
+          autoBps={effectiveSlippageBps}
+        />
       </div>
 
       {unsupportedChain && (
@@ -870,7 +819,7 @@ export function SwapCard() {
           "group rounded-[20px] px-4 pb-2.5 pt-3 transition-colors",
           focusedField === "in"
             ? "border border-[rgba(255,255,255,0.12)]"
-            : "border border-transparent bg-[#1F1F1F] "
+            : "border border-transparent bg-[var(--btn-bg)]"
         )}
       >
         <div className="text-sm-16 flex items-center justify-between text-color-muted">
@@ -957,7 +906,7 @@ export function SwapCard() {
           "mt-1 rounded-[20px] px-4 pb-2.5 pt-3 transition-colors",
           focusedField === "out"
             ? "border border-[rgba(255,255,255,0.12)]"
-            : "border border-transparent bg-[#1F1F1F] "
+            : "border border-transparent bg-[var(--btn-bg)]"
         )}
       >
         <div className="text-sm-16 text-color-muted">{t("swap.youReceive")}</div>
@@ -993,17 +942,28 @@ export function SwapCard() {
           }
           // Both approval and swap happen inside the confirm modal's stepwise
           // action button (授权 X → 确认兑换), so always open it first.
+          if (isWrap) {
+            // Wrap/unwrap is a single, slippage-free step — execute directly
+            // instead of opening the router-style confirm modal.
+            doWrap();
+            return;
+          }
           setShowConfirm(true);
         }}
         disabled={disabled}
         className={clsx(
           "mt-1 flex w-full items-center justify-center gap-2 rounded-[20px] py-4 text-[18px] font-semibold transition",
-          disabled
-            ? "cursor-not-allowed bg-[#1F1F1F] text-[#8a8a8a]"
+          // Wrap/unwrap fires directly (no confirm modal), so keep the button
+          // highlighted (not greyed) even while disabled during the tx — only
+          // this pair gets the bright state; every other pair greys out.
+          isWrap && disabled
+            ? "bg-brand-gradient text-[#0b0b14]"
+            : disabled
+            ? "cursor-not-allowed bg-[var(--btn-bg)] text-[#8a8a8a]"
             : "bg-brand-gradient text-[#0b0b14] hover:brightness-105"
         )}
       >
-        {isFetchingQuote ? (
+        {!isWrap && isFetchingQuote ? (
           <>
             <svg
               className="h-4 w-4 animate-spin"
@@ -1032,7 +992,35 @@ export function SwapCard() {
         )}
       </button>
 
-      {hasAmountInput && activeQuote && (
+      {isWrap && hasAmountInput ? (
+        // Wrap/unwrap: show only the 1:1 rate line, no slippage / route / fee.
+        <div className="mt-3 space-y-3">
+          <div className="flex items-center justify-between text-[0.875rem] text-white/65">
+            <span>
+              {showInverseRate
+                ? `1 ${tokenOut?.symbol} = 1 ${tokenIn?.symbol}`
+                : `1 ${tokenIn?.symbol} = 1 ${tokenOut?.symbol}`}
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowInverseRate((v) => !v)}
+              aria-label={t("swap.flip")}
+              className="text-white/65 transition hover:text-white"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                strokeWidth={8}
+                viewBox="0 0 24 24"
+                style={{ width: 16, height: 16, color: "currentColor" }}
+              >
+                <path d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      ) : (
+        hasAmountInput && activeQuote && (
         <div className="mt-3 space-y-3">
           {/* Rate + slippage single line, directly below the swap button */}
           <div className="flex items-center justify-between text-[0.875rem] text-white/65">
@@ -1087,7 +1075,7 @@ export function SwapCard() {
 
           {/* Detail card: minimum received / maximum paid, price impact — collapsible, hidden by default */}
           {showDetails && (
-          <div className="space-y-1.5 rounded-[20px] bg-[#1e1e1e] px-4 py-3 text-xs">
+          <div className="space-y-1.5 rounded-[20px] px-4 py-3 text-xs bg-[var(--btn-bg)]">
             <>
               <Row
                 label={isExactOut ? t("swap.maxPaid") : t("swap.minReceived")}
@@ -1126,7 +1114,7 @@ export function SwapCard() {
                   </span>
                   <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
                     {activeQuote.path.map((addr, i) => {
-                      const tk = buildRouteToken(addr, chainId);
+                      const tk = buildRouteToken(addr, chainId, tokenIn, tokenOut);
                       return (
                         <Fragment key={`${addr}-${i}`}>
                           {i > 0 && (
@@ -1145,6 +1133,7 @@ export function SwapCard() {
           </div>
           )}
         </div>
+        )
       )}
 
       <TokenSelectModal
@@ -1157,7 +1146,7 @@ export function SwapCard() {
         onSelect={(tk) => modalSide && onSelect(modalSide, tk)}
       />
 
-      {tokenIn && tokenOut && activeQuote && (
+      {!isWrap && tokenIn && tokenOut && activeQuote && (
         <SwapConfirmModal
           open={showConfirm}
           onClose={() => setShowConfirm(false)}
@@ -1266,7 +1255,7 @@ function TokenButton({
       onClick={onClick}
       className="flex shrink-0 items-center gap-2 rounded-full bg-sym-select py-1.5 pl-1.5 pr-3 transition"
     >
-      <TokenLogo token={token} size={24} />
+      <TokenLogo token={token} size={28} />
       <span className="text-base font-medium text-white">{token.symbol}</span>
       <svg viewBox="0 0 24 24" fill="none" strokeWidth={8} style={{ width: 18, height: 18, color: "#9b9b9b", transform: "rotate(-90deg)" }}>
         <path d="M15.7071 5.29289C16.0976 5.68342 16.0976 6.31658 15.7071 6.70711L10.4142 12L15.7071 17.2929C16.0976 17.6834 16.0976 18.3166 15.7071 18.7071C15.3166 19.0976 14.6834 19.0976 14.2929 18.7071L8.2929 12.7071C7.9024 12.3166 7.9024 11.6834 8.2929 11.2929L14.2929 5.29289C14.6834 4.90237 15.3166 4.90237 15.7071 5.29289Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd" />

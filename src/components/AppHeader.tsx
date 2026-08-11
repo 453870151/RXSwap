@@ -9,7 +9,7 @@ import { LanguageToggle } from "./LanguageToggle";
 import { useTranslation } from "./LanguageProvider";
 
 const NAV = [
-  { href: "http://localhost:3000/", key: "nav.home", exact: true },
+  { href: "https://rxexchange.io/", key: "nav.home", exact: true },
   { href: "/swap", key: "nav.swap" },
   { href: "/liquidity", key: "nav.liquidity" },
 ];

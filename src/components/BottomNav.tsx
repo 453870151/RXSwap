@@ -53,7 +53,7 @@ function GlobeIcon({ className }: { className?: string }) {
 }
 
 const ROUTE_TABS: RouteTab[] = [
-  { key: "home", href: "http://localhost:3000/", icon: HomeIcon },
+  { key: "home", href: "https://rxexchange.io/", icon: HomeIcon },
   { key: "swap", href: "/swap", icon: SwapIcon },
   { key: "liquidity", href: "/liquidity", icon: LiquidityIcon },
 ];

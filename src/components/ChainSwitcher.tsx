@@ -125,7 +125,11 @@ export function ChainSwitcher() {
           "glass flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-300"
         )}
       >
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+        <img
+          src={`/images/chains/${activeId}.png`}
+          alt={activeMeta?.name ?? "Chain"}
+          className="h-4 w-4 rounded-full object-contain"
+        />
         <span className="text-[var(--text)]">{activeMeta?.shortName}</span>
         <svg
           className={clsx(

@@ -17,9 +17,9 @@ import { computeMinAmountOut } from "@/lib/swap";
 import { getChainMeta } from "@/config/chains";
 import { getLiquidityAddedAt } from "@/lib/recentLiquidity";
 import { ERC20_ABI } from "@/config/abis/erc20";
-import { getRouterAddresses, SWAP_FEE_BPS } from "@/config/contracts";
+import { getRouterAddresses, WNATIVE, SWAP_FEE_BPS } from "@/config/contracts";
 import { formatUnits } from "viem";
-import { type SwapToken } from "@/config/tokens";
+import { type SwapToken, getNativeToken } from "@/config/tokens";
 import { useTranslation } from "./LanguageProvider";
 
 const PCTS = [25, 50, 75, 100];
@@ -51,6 +51,18 @@ export function LiquidityList() {
   // Navigate to the add-liquidity flow with a preselected pair. If no wallet is
   // connected, connect first (same as the nav button) — the user can then click
   // the add button again to actually land on the add page.
+  // A position's pair is always reported as WBNB on-chain. When pre-selecting
+  // that pair on the add page we want it to read as the native "BNB" (matching
+  // the swap/page convention) rather than the wrapped contract. Map a token to
+  // its URL-param value: native → symbol, wrapped-native → symbol too, ERC20 →
+  // address.
+  function currencyParam(chainId: number, token: SwapToken): string {
+    if (token.isNative) return token.symbol;
+    const wrapped = WNATIVE[chainId];
+    if (wrapped && token.address.toLowerCase() === wrapped.toLowerCase()) return getNativeToken(chainId).symbol;
+    return token.address;
+  }
+
   function goAddPair(tokenA: SwapToken, tokenB: SwapToken) {
     if (!isConnected) {
       if (connectors[0]) connect({ connector: connectors[0] });
@@ -58,8 +70,8 @@ export function LiquidityList() {
     }
     const params = new URLSearchParams();
     params.set("step", "1");
-    params.set("currencyA", tokenA.isNative ? tokenA.symbol : tokenA.address);
-    params.set("currencyB", tokenB.isNative ? tokenB.symbol : tokenB.address);
+    params.set("currencyA", currencyParam(chainId, tokenA));
+    params.set("currencyB", currencyParam(chainId, tokenB));
     router.push(`/liquidity/add?${params.toString()}`);
   }
 
@@ -180,7 +192,9 @@ function MineView({
 
   if (isLoading) {
     return (
-      <div className="glass !bg-transparent w-full max-w-6xl animate-fade-up rounded-3xl p-8">
+      <div
+        className=" w-full max-w-6xl animate-fade-up rounded-3xl p-8 rounded-[20px] border border-[rgba(255,255,255,0.12)]"
+      >
         <div className="shimmer h-4 w-1/2 rounded bg-[var(--input-bg)]" />
         <div className="shimmer mt-3 h-16 w-full rounded-2xl bg-[var(--input-bg)]" />
       </div>
@@ -201,6 +215,17 @@ function MineView({
 
   return (
     <div className="flex w-full max-w-6xl animate-fade-up flex-col gap-3">
+      {/* Header: title on the left, add-liquidity entry on the right. */}
+      <div className="flex items-center justify-between px-1 pb-1">
+        <h2 className="text-lg font-bold sm:text-xl">{t("liquidity.yourPositions")}</h2>
+        <button
+          onClick={onAdd}
+          className="btn-primary rounded-xl px-4 py-2 text-[13px] font-bold sm:px-[22px] sm:py-[9px] sm:text-sm"
+        >
+          {t("liquidity.add")}
+        </button>
+      </div>
+
       {sortedPositions?.map((p) => {
         // USD value of the user's holdings, derived from the parallel price map.
         // undefined → prices still loading (skeleton), null → no route ("—").
@@ -208,7 +233,7 @@ function MineView({
         return (
         <div
           key={p.pair}
-          className="glass flex flex-col gap-4 rounded-[20px] p-6 transition border border-[rgba(255,255,255,0.12)] !bg-transparent sm:flex-row sm:items-center sm:gap-5 sm:px-6"
+          className="flex flex-col gap-4 rounded-[20px] p-4 transition border border-[rgba(255,255,255,0.12)] sm:flex-row sm:items-center sm:gap-5 sm:p-6 bg-[var(--liquidity-bg)]"
         >
           {/* Left: overlapping logos + pair name / badges / status */}
           <div className="flex min-w-0 items-center gap-4">
@@ -218,15 +243,15 @@ function MineView({
             </div>
             <div className="flex min-w-0 flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-lg font-bold">
+                <span className="text-base font-bold sm:text-lg">
                   {p.tokenA.symbol} / {p.tokenB.symbol}
                 </span>
-                <span className="rounded-md bg-[#2b2b2b] px-[7px] py-[2px] text-[11px] font-semibold text-white/55">
+                {/* <span className="rounded-md bg-[#2b2b2b] px-[7px] py-[2px] text-[11px] font-semibold text-white/55">
                   V2
                 </span>
                 <span className="rounded-md bg-[#2b2b2b] px-[7px] py-[2px] text-[11px] font-semibold text-white/55">
                   {formatSlippage(SWAP_FEE_BPS)}%
-                </span>
+                </span> */}
               </div>
               <div className="text-[13px] text-white/45">
                 {t("liquidity.deposited")}{" "}
@@ -243,8 +268,8 @@ function MineView({
           </div>
 
           {/* Right: USD value / pool share metrics + actions */}
-          <div className="flex flex-col gap-4 sm:ml-auto sm:flex-row sm:items-center sm:gap-7">
-            <div className="flex gap-7">
+          <div className="flex flex-col gap-4 border-t border-white/[0.06] pt-4 sm:ml-auto sm:flex-row sm:items-center sm:gap-7 sm:border-0 sm:pt-0">
+            <div className="flex justify-between gap-7 sm:justify-start">
               <div className="sm:text-right">
                 {valueUsd === undefined ? (
                   <div className="shimmer h-5 w-16 rounded bg-[var(--input-bg)]" />
@@ -285,10 +310,6 @@ function MineView({
         );
       })}
 
-      {/* Quick-add placeholder appended after the position rows as a clear
-          add-liquidity entry point. */}
-      <AddPlaceholder compact onClick={onAdd} />
-
       {removing && (
         <RemoveModal
           position={removing}
@@ -316,7 +337,7 @@ function AddPlaceholder({ className = "", onClick, compact = false, title, hint 
       <button
         onClick={handleClick}
         className={
-          "flex w-full items-center justify-center gap-2.5 rounded-2xl border border-dashed border-[rgba(232,185,35,0.35)] bg-[rgba(232,185,35,0.03)] px-5 py-4 text-center transition hover:border-[rgba(232,185,35,0.65)] hover:bg-[rgba(232,185,35,0.07)] " +
+          "flex w-full items-center justify-center gap-2.5 rounded-2xl border border-dashed border-[rgba(232,185,35,0.35)] bg-[var(--liquidity-bg)] px-5 py-4 text-center hover:border-[rgba(232,185,35,0.65)] hover:bg-[rgba(232,185,35,0.07)] " +
           className
         }
       >
@@ -332,7 +353,7 @@ function AddPlaceholder({ className = "", onClick, compact = false, title, hint 
     <button
       onClick={handleClick}
       className={
-        "flex min-h-[180px] w-full flex-col items-center justify-center gap-2 rounded-3xl border border-[rgba(255,255,255,0.12)] p-5 text-center transition hover:bg-[#1F1F1F] " +
+        "flex min-h-[180px] w-full flex-col items-center justify-center gap-2 rounded-3xl border border-[rgba(255,255,255,0.12)] p-5 text-center transition" +
         className
       }
     >
@@ -534,7 +555,7 @@ function RemoveModal({
       }}
     >
       <div
-        className="glass w-full max-w-md animate-fade-up rounded-t-3xl p-5 sm:rounded-3xl"
+        className="glass w-full max-w-md animate-fade-up rounded-t-3xl p-5 sm:rounded-3xl bg-[var(--modal-bg)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -573,7 +594,7 @@ function RemoveModal({
               onClick={() => setPct(p)}
               className={
                 "rounded-xl py-2 text-sm font-semibold transition " +
-                (pct === p ? "bg-brand-gradient text-white" : "bg-[var(--input-bg)] hover:bg-[var(--hover)]")
+                (pct === p ? "bg-brand-gradient text-white" : "bg-[var(--modal-group-bg)]")
               }
             >
               {p === 100 ? t("common.max") : `${p}%`}
@@ -581,13 +602,13 @@ function RemoveModal({
           ))}
         </div>
 
-        <div className="mb-4 space-y-2 rounded-2xl bg-[var(--input-bg)] p-3 text-sm">
+        <div className="mb-4 space-y-2 rounded-2xl bg-[var(--modal-group-bg)] p-3 text-sm">
           <div className="flex justify-between">
-            <span className="text-[var(--text-muted)]">{position.tokenA.symbol}</span>
+            <span className="text-[var(--text-muted)] font-bold">{position.tokenA.symbol}</span>
             <span className="font-medium">{formatAmount(amtA, position.tokenA.decimals)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-[var(--text-muted)]">{position.tokenB.symbol}</span>
+            <span className="text-[var(--text-muted)] font-bold">{position.tokenB.symbol}</span>
             <span className="font-medium">{formatAmount(amtB, position.tokenB.decimals)}</span>
           </div>
         </div>

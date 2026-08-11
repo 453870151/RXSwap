@@ -121,7 +121,7 @@ export function TokenSelectModal({
       onClick={onClose}
     >
       <div
-        className="glass flex h-[570px] w-full animate-fade-up flex-col rounded-t-3xl bg-[rgb(19,19,19)] p-4 sm:max-w-[25rem] sm:rounded-3xl"
+        className="glass flex h-[570px] w-full animate-fade-up flex-col rounded-t-3xl bg-[var(--modal-bg)] p-4 sm:max-w-[25rem] sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex shrink-0 items-center justify-between">

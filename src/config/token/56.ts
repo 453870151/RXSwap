@@ -40,22 +40,4 @@ export const tokens: SwapToken[] = [
     logoURI:
       "https://tokens.pancakeswap.finance/images/0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d.png",
   },
-  {
-    address: "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
-    symbol: "ETH",
-    name: "Binance-Peg Ethereum",
-    decimals: 18,
-    chainId: bsc.id,
-    logoURI:
-      "https://tokens.pancakeswap.finance/images/0x2170Ed0880ac9A755fd29B2688956BD959F933F8.png",
-  },
-  {
-    address: "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c",
-    symbol: "BTCB",
-    name: "Binance BTC",
-    decimals: 18,
-    chainId: bsc.id,
-    logoURI:
-      "https://tokens.pancakeswap.finance/images/0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c.png",
-  },
 ];

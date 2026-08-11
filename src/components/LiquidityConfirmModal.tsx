@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { formatNumber, formatSlippage } from "@/lib/format";
+import { formatNumber, formatUsd, formatSlippage } from "@/lib/format";
 import type { SwapToken } from "@/config/tokens";
+import { SWAP_FEE_BPS } from "@/config/contracts";
 import { TokenLogo } from "./TokenLogo";
 import { useTranslation } from "./LanguageProvider";
+import { useTokenPrices } from "@/hooks/useAllPools";
 
 export function LiquidityConfirmModal({
   open,
@@ -15,8 +17,6 @@ export function LiquidityConfirmModal({
   tokenB,
   amountAValue,
   amountBValue,
-  rate,
-  slippageBps,
   shareAfter,
   lpReceivedValue,
   lpSymbol,
@@ -31,8 +31,6 @@ export function LiquidityConfirmModal({
   tokenB: SwapToken;
   amountAValue: string;
   amountBValue: string;
-  rate: number;
-  slippageBps: number;
   shareAfter: number;
   lpReceivedValue: string;
   lpSymbol: string;
@@ -57,49 +55,47 @@ export function LiquidityConfirmModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose, isBusy]);
 
-  const rateText = useMemo(() => {
-    if (!rate || !isFinite(rate)) return null;
-    return {
-      a: `1 ${tokenA.symbol} ≈ ${rate.toFixed(6)} ${tokenB.symbol}`,
-      b: `1 ${tokenB.symbol} ≈ ${(1 / rate).toFixed(6)} ${tokenA.symbol}`,
-    };
-  }, [rate, tokenA.symbol, tokenB.symbol]);
+  // USD estimates for the two deposit amounts. Prices are already fetched by
+  // the parent page, so this query is deduped by React Query.
+  const chainId = tokenA.chainId;
+  const { data: prices } = useTokenPrices(chainId, [tokenA, tokenB]);
 
-  // Pie-chart split based on the two deposit values. For an existing pool we
-  // convert amountB into token-A terms via the pool rate; for a fresh pool we
-  // fall back to an even 50/50 split.
-  const splitPctA = useMemo(() => {
-    const a = parseFloat(amountAValue || "0");
-    const b = parseFloat(amountBValue || "0");
-    if (a <= 0 && b <= 0) return 50;
-    if (rate > 0 && isFinite(rate)) {
-      const valueBInA = b / rate;
-      const total = a + valueBInA;
-      if (total > 0) return (a / total) * 100;
-    }
-    return 50;
-  }, [amountAValue, amountBValue, rate]);
+  const amountAUsd = useMemo(() => {
+    const usd = prices?.get(tokenA.address.toLowerCase());
+    const amt = parseFloat(amountAValue || "0");
+    if (usd == null || !isFinite(amt) || amt <= 0) return null;
+    return amt * usd;
+  }, [prices, tokenA.address, amountAValue]);
+
+  const amountBUsd = useMemo(() => {
+    const usd = prices?.get(tokenB.address.toLowerCase());
+    const amt = parseFloat(amountBValue || "0");
+    if (usd == null || !isFinite(amt) || amt <= 0) return null;
+    return amt * usd;
+  }, [prices, tokenB.address, amountBValue]);
 
   if (!open || !mounted) return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/20 p-0 sm:items-center sm:p-4"
+      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
       onClick={() => {
         if (!isBusy) onClose();
       }}
     >
       <div
-        className="w-full max-w-md animate-fade-up rounded-t-3xl border border-[var(--glass-border)] bg-[var(--bg-elevated)] p-4 shadow-[var(--card-shadow)] sm:rounded-3xl sm:p-5"
+        className="w-full max-w-md animate-fade-up rounded-t-[20px] border border-white/[0.1] bg-[var(--modal-bg)] p-5 shadow-2xl sm:rounded-[20px]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-bold">{t("liquidity.title")}</h3>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-white/55">
+            {t("liquidity.creatingPosition")}
+          </span>
           <button
             onClick={onClose}
             disabled={isBusy}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--hover)] disabled:opacity-50"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-white/55 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
             aria-label={t("common.close")}
           >
             <svg
@@ -119,80 +115,86 @@ export function LiquidityConfirmModal({
           </button>
         </div>
 
-        {/* LP preview card */}
-        <div className="mb-4 flex items-center justify-between rounded-2xl border border-[var(--glass-border)] bg-[var(--input-bg)] p-4">
-          <span className="text-sm font-semibold text-[#e8b923]">
+        {/* Pair title + overlapping logos */}
+        <div className="mt-5 flex items-start justify-between">
+          <div>
+            <h3 className="text-xl font-bold text-white">
+              {tokenA.symbol} / {tokenB.symbol}
+            </h3>
+            {/* <div className="mt-2 flex items-center gap-1.5">
+              <span className="rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-white/70">
+                v2
+              </span>
+              <span className="rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-white/70">
+                {formatSlippage(SWAP_FEE_BPS)}%
+              </span>
+            </div> */}
+          </div>
+          <span className="relative flex shrink-0">
+            <TokenLogo token={tokenA} size={40} />
+            <span className="relative -ml-3">
+              <TokenLogo token={tokenB} size={40} />
+            </span>
+          </span>
+        </div>
+
+        {/* Depositing amounts */}
+        <div className="mt-2">
+          <p className="text-sm text-white/50">{t("liquidity.depositing")}</p>
+          <div className="mt-3 space-y-3.5">
+            <div>
+              <p className="text-base font-bold tabular-nums text-white">
+                {amountAValue} {tokenA.symbol}
+              </p>
+              <p className="mt-0.5 text-sm tabular-nums text-white/45">
+                {amountAUsd != null ? `US${formatUsd(amountAUsd)}` : ""}
+              </p>
+            </div>
+            <div>
+              <p className="text-base font-bold tabular-nums text-white">
+                {amountBValue} {tokenB.symbol}
+              </p>
+              <p className="mt-0.5 text-sm tabular-nums text-white/45">
+                {amountBUsd != null ? `US${formatUsd(amountBUsd)}` : ""}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="my-4 border-t border-white/[0.06]" />
+
+        {/* You will receive */}
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-white/50">
             {t("liquidity.youWillReceive")}
           </span>
-          <span className="flex items-center gap-2 text-base font-bold tabular-nums">
+          <span className="flex items-center gap-2 text-sm font-bold tabular-nums text-white">
             <span className="relative flex shrink-0">
-              <TokenLogo token={tokenA} size={28} />
-              <span className="relative -ml-2.5">
-                <TokenLogo token={tokenB} size={28} />
+              <TokenLogo token={tokenA} size={20} />
+              <span className="relative -ml-1.5">
+                <TokenLogo token={tokenB} size={20} />
               </span>
             </span>
-            <span className="truncate max-w-[120px]">{lpSymbol}</span>
-            <span>{lpReceivedValue}</span>
+            {lpReceivedValue} {lpSymbol}
           </span>
         </div>
 
         {/* Share in pair */}
-        <div className="mb-4 flex items-center justify-between text-sm">
-          <span className="font-semibold text-[#e8b923]">
+        <div className="mt-3 flex items-center justify-between">
+          <span className="text-sm text-white/50">
             {t("liquidity.yourShareInPair")}
           </span>
-          <span className="font-bold tabular-nums">
+          <span className="text-sm font-bold tabular-nums text-white">
             {formatNumber(shareAfter, 6)}%
           </span>
         </div>
 
-        {/* Deposit input card with pie chart */}
-        <div className="mb-4 flex items-center gap-4 rounded-2xl border border-[var(--glass-border)] bg-[var(--input-bg)] p-4">
-          <PieChart pctA={splitPctA} size={72} />
-          <div className="flex-1 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-sm font-semibold">
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#f5c542]" />
-                {tokenA.symbol}
-              </span>
-              <span className="text-sm font-bold tabular-nums">{amountAValue}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-sm font-semibold">
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#2dd4bf]" />
-                {tokenB.symbol}
-              </span>
-              <span className="text-sm font-bold tabular-nums">{amountBValue}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Detail rows */}
-        <div className="space-y-2.5 text-sm">
-          {rateText && (
-            <div className="flex items-start justify-between">
-              <span className="text-[var(--text-muted)]">{t("swap.rate")}</span>
-              <span className="text-right font-medium tabular-nums">
-                {rateText.a}
-                <br />
-                {rateText.b}
-              </span>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between">
-            <span className="text-[var(--text-muted)]">
-              {t("swap.slippageLimit")}
-            </span>
-            <span className="font-medium">{formatSlippage(slippageBps)}%</span>
-          </div>
-        </div>
-
-        {/* Confirm button — stepwise: 授权 A → 授权 B → 确认供应 */}
+        {/* Confirm button — stepwise: 授权 A → 授权 B → 创建 */}
         <button
           onClick={onConfirm}
           disabled={isBusy}
-          className="btn-primary mt-5 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-bold disabled:opacity-70"
+          className="mt-6 flex w-full items-center justify-center gap-2 rounded-[20px] bg-brand-gradient py-4 text-base font-bold text-[#0b0b14] transition hover:brightness-110 disabled:opacity-70"
         >
           {isBusy ? (
             <>
@@ -225,46 +227,11 @@ export function LiquidityConfirmModal({
           ) : needsApprovalB ? (
             t("swap.approve", { symbol: tokenB.symbol })
           ) : (
-            t("liquidity.confirmSupply")
+            t("liquidity.create")
           )}
         </button>
       </div>
     </div>,
     document.body
-  );
-}
-
-function PieChart({ pctA, size = 72 }: { pctA: number; size?: number }) {
-  const r = size * 0.38;
-  const stroke = size * 0.18;
-  const c = 2 * Math.PI * r;
-  const a = Math.max(0, Math.min(100, pctA));
-  const segA = (a / 100) * c;
-  const segB = c - segA;
-
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0 -rotate-90">
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke="#f5c542"
-        strokeWidth={stroke}
-        strokeDasharray={`${segA} ${c}`}
-        strokeLinecap="butt"
-      />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke="#2dd4bf"
-        strokeWidth={stroke}
-        strokeDasharray={`${segB} ${c}`}
-        strokeDashoffset={-segA}
-        strokeLinecap="butt"
-      />
-    </svg>
   );
 }
