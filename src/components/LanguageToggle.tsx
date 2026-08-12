@@ -71,7 +71,7 @@ export function LanguageToggle() {
             : "invisible scale-95 opacity-0 pointer-events-none"
         )}
         style={{
-          background: '#0D0D1A',
+          background: 'var(--modal-bg)',
           border: '1px solid rgba(200, 169, 81, 0.2)',
           boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.03) inset',
         }}

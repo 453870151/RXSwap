@@ -9,6 +9,7 @@ interface RouteTab {
   key: string;
   href: string;
   icon: React.FC<{ className?: string }>;
+  disabled?: boolean;
 }
 
 function HomeIcon({ className }: { className?: string }) {
@@ -52,10 +53,24 @@ function GlobeIcon({ className }: { className?: string }) {
   );
 }
 
+function BridgeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21V11" />
+      <path d="M21 21V11" />
+      <path d="M3 11c0-4.5 18-4.5 18 0" />
+      <path d="M7 21v-4" />
+      <path d="M17 21v-4" />
+    </svg>
+  );
+}
+
 const ROUTE_TABS: RouteTab[] = [
   { key: "home", href: "https://rxexchange.io/", icon: HomeIcon },
   { key: "swap", href: "/swap", icon: SwapIcon },
   { key: "liquidity", href: "/liquidity", icon: LiquidityIcon },
+  // Cross-chain bridge — placeholder for now, not clickable (like Limit).
+  { key: "bridge", href: "#", icon: BridgeIcon, disabled: true },
 ];
 
 export function BottomNav() {
@@ -93,6 +108,20 @@ export function BottomNav() {
         {ROUTE_TABS.map((tab) => {
           const active = isActive(tab.href);
           const Icon = tab.icon;
+          if (tab.disabled) {
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                className={clsx(
+                  "flex flex-1 flex-col items-center justify-center gap-1 py-2.5 transition-colors duration-200 text-[#7A8A9A]"
+                )}
+              >
+                <Icon className="h-6 w-6" />
+                <span className="text-[10px] font-medium tracking-wide">{t(`bottomNav.${tab.key}`)}</span>
+              </button>
+            );
+          }
           return (
             <button
               key={tab.key}
@@ -124,15 +153,6 @@ export function BottomNav() {
             </button>
           );
         })}
-        <button
-          type="button"
-          onClick={switchLang}
-          aria-label={t("bottomNav.language")}
-          className="flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[#7A8A9A] transition-colors duration-200"
-        >
-          <GlobeIcon className="h-6 w-6" />
-          <span className="text-[10px] font-medium tracking-wide">{langLabel}</span>
-        </button>
       </div>
     </nav>
   );

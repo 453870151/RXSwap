@@ -111,7 +111,7 @@ export function SlippageSettings({
         </svg>
       </button>
       {showSettings && (
-        <div className="absolute right-[-5px] z-20 mt-2 w-[344px] max-w-[95vw] animate-fade-up rounded-[16px] border border-[var(--glass-border)] bg-[var(--modal-bg)] p-4 shadow-[var(--card-shadow)]">
+        <div className="absolute right-[-5px] z-20 mt-2 w-[344px] max-w-[95vw] animate-fade-up rounded-radius border border-[var(--glass-border)] bg-[var(--modal-bg)] p-4 shadow-[var(--card-shadow)]">
           {/* Header */}
           <div className="mb-1 flex items-center justify-between">
             <p className="text-base font-bold text-[var(--text)]">

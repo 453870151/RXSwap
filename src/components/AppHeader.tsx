@@ -3,21 +3,32 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAccount } from "wagmi";
 import { ChainSwitcher } from "./ChainSwitcher";
 import { WalletButton } from "./WalletButton";
-import { LanguageToggle } from "./LanguageToggle";
+import { PreferencesMenu } from "./PreferencesMenu";
 import { useTranslation } from "./LanguageProvider";
 
-const NAV = [
+interface NavItem {
+  href: string;
+  key: string;
+  exact?: boolean;
+  disabled?: boolean;
+}
+
+const NAV: NavItem[] = [
   { href: "https://rxexchange.io/", key: "nav.home", exact: true },
   { href: "/swap", key: "nav.swap" },
   { href: "/liquidity", key: "nav.liquidity" },
+  // Cross-chain bridge — placeholder for now, not clickable (like Limit).
+  { href: "#", key: "nav.bridge", disabled: true },
 ];
 
 export function AppHeader() {
   const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
+  const { isConnected } = useAccount();
 
   // Warm up nav route chunks so desktop navigation (router.push from a button)
   // doesn't stall on first visit to a not-yet-loaded route segment.
@@ -47,6 +58,19 @@ export function AppHeader() {
               const isActive = item.exact
                 ? pathname === item.href
                 : pathname.startsWith(item.href);
+              if (item.disabled) {
+                return (
+                  <button
+                    title={t("nav.comingSoon")}
+                    key={item.key}
+                    className="flex cursor-not-allowed items-center gap-1.5 px-4 py-2 text-[13px] font-medium tracking-[0.03em] text-white/30"
+                  >
+                    <span className="nav-text-wrap">
+                      <span className="nav-text-default">{t(item.key)}</span>
+                    </span>
+                  </button>
+                );
+              }
               return (
                 <button
                   key={item.key}
@@ -80,12 +104,11 @@ export function AppHeader() {
           </nav>
         </div>
 
-        {/* Right: chain / language / wallet */}
+        {/* Right: chain / global preferences (theme + language) / wallet */}
         <div className="flex items-center gap-2 sm:gap-5">
           <ChainSwitcher />
-          <div className="hidden md:block">
-            <LanguageToggle />
-          </div>
+          {/* Global preferences (theme / language) — shown only before the wallet connects. */}
+          {!isConnected && <PreferencesMenu />}
           <WalletButton />
         </div>
       </div>

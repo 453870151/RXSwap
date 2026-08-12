@@ -1,4 +1,4 @@
-// Uniswap V2 / Pancake V2 Factory — getPair / allPairs / allPairsLength.
+// getPair / allPairs / allPairsLength.
 export const FACTORY_ABI = [
   {
     type: "function",

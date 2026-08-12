@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAccount, useSwitchChain } from "wagmi";
-import { SUPPORTED_CHAINS, getChainMeta } from "@/config/chains";
+import { SUPPORTED_CHAINS, getChainMeta, DEFAULT_CHAIN_ID } from "@/config/chains";
 import clsx from "clsx";
 
 export function ChainSwitcher() {
@@ -15,7 +15,7 @@ export function ChainSwitcher() {
   const sheetRef = useRef<HTMLDivElement>(null);
 
   const activeId =
-    chainId && SUPPORTED_CHAINS.includes(chainId) ? chainId : SUPPORTED_CHAINS[0];
+    chainId && SUPPORTED_CHAINS.includes(chainId) ? chainId : DEFAULT_CHAIN_ID;
   const activeMeta = getChainMeta(activeId);
 
   // Portal target is only available on the client.
@@ -122,7 +122,7 @@ export function ChainSwitcher() {
         aria-haspopup="listbox"
         aria-expanded={open}
         className={clsx(
-          "glass flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-300"
+          "glass flex items-center gap-1.5 rounded-radius px-3 py-3 text-xs font-semibold transition-all duration-300"
         )}
       >
         <img
@@ -154,13 +154,13 @@ export function ChainSwitcher() {
       <div
         role="listbox"
         className={clsx(
-          "absolute right-0 z-50 mt-4 hidden w-60 rounded-xl overflow-hidden md:block",
+          "absolute right-0 z-50 mt-4 hidden w-60 overflow-hidden md:block rounded-modal-radius",
           open
             ? "visible scale-100 opacity-100"
             : "invisible scale-95 opacity-0 pointer-events-none"
         )}
         style={{
-          background: "#0D0D1A",
+          background: "var(--modal-bg)",
           border: "1px solid rgba(200, 169, 81, 0.2)",
           boxShadow:
             "0 16px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.03) inset",
@@ -190,13 +190,13 @@ export function ChainSwitcher() {
             <div
               role="listbox"
               className={clsx(
-                "fixed inset-x-0 bottom-0 z-[70] overflow-hidden rounded-t-2xl pb-[env(safe-area-inset-bottom)] transition-all duration-200 ease-out",
+                "fixed inset-x-0 bottom-0 z-[70] overflow-hidden rounded-modal-radius pb-[env(safe-area-inset-bottom)] transition-all duration-200 ease-out",
                 open
                   ? "visible translate-y-0 opacity-100"
                   : "invisible translate-y-full opacity-0 pointer-events-none"
               )}
               style={{
-                background: "#0D0D1A",
+                background: "var(--modal-bg)",
                 border: "1px solid rgba(200, 169, 81, 0.2)",
                 boxShadow:
                   "0 16px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.03) inset",

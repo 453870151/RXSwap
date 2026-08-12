@@ -5,12 +5,15 @@
   "nav": {
     "home": "首頁",
     "swap": "兌換",
-    "liquidity": "流動性"
+    "liquidity": "流動性",
+    "bridge": "跨鏈橋",
+    "comingSoon": "即將推出"
   },
   "bottomNav": {
     "home": "首頁",
     "swap": "兌換",
     "liquidity": "流動性",
+    "bridge": "跨鏈橋",
     "language": "語言"
   },
   "common": {
@@ -82,6 +85,8 @@
     "unsupportedChain": "當前不支援 {{chain}}",
     "feeOnTransferNotice": "此代幣為轉賬扣稅代幣（稅幣 / 反射幣），僅支援「支付精確」模式，無法指定精確收到額。",
     "feeOnTransferReceiveHint": "扣稅幣：自動計算",
+    "txError": "交易失敗：{{reason}}",
+    "txReverted": "交易已廣播但在鏈上 revert（未成功）。",
     "wrap": "封裝",
     "unwrap": "解除封裝",
     "wrapSuccess": "封裝成功",
@@ -172,5 +177,10 @@
     "light": "淺色",
     "dark": "深色",
     "system": "跟隨系統"
+  },
+  "prefs": {
+    "title": "全局偏好設定",
+    "theme": "主題",
+    "language": "語言"
   }
 }

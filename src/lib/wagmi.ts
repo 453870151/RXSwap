@@ -20,9 +20,9 @@ export const wagmiConfig = createConfig({
   ],
   ssr: true,
   transports: {
-    [bsc.id]: http(bscRpc),
-    [bscTestnet.id]: http(bscTestnetRpc),
-    [arbitrum.id]: http(arbitrumRpc),
-    [arbitrumSepolia.id]: http(arbitrumSepoliaRpc),
+    [bsc.id]: http(bscRpc, { timeout: 8_000 }),
+    [bscTestnet.id]: http(bscTestnetRpc, { timeout: 8_000 }),
+    [arbitrum.id]: http(arbitrumRpc, { timeout: 8_000 }),
+    [arbitrumSepolia.id]: http(arbitrumSepoliaRpc, { timeout: 8_000 }),
   },
 });

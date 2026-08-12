@@ -25,11 +25,17 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-// Force dark theme to match the landing-page visual style.
+// Apply the persisted theme before first paint. Default is dark (moon icon in
+// PreferencesMenu); choosing the sun stores "light" and removes the class.
 const themeScript = `
 (function() {
   try {
-    document.documentElement.classList.add('dark');
+    var theme = localStorage.getItem('theme') || 'dark';
+    if (theme === 'light') {
+      document.documentElement.classList.remove('dark');
+    } else {
+      document.documentElement.classList.add('dark');
+    }
   } catch (e) {}
 })();
 `;

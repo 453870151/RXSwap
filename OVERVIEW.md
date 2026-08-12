@@ -22,7 +22,7 @@
 ## 支持网络
 | 网络 | Chain ID | 原生币 | Router / Factory | 状态 |
 |---|---|---|---|---|
-| BNB Smart Chain | 56 | BNB | 已配置（自有 + PancakeSwap 回退） | 可用 |
+| BNB Smart Chain | 56 | BNB | 已配置 | 可用 |
 | BSC Testnet | 97 | tBNB | 已配置 | 可用 |
 | Arbitrum One | 42161 | ETH | **零地址占位**（待部署） | 仅链切换 / ETH↔WETH 封装 |
 | Arbitrum Sepolia | 421614 | ETH | **零地址占位**（待部署） | 仅链切换 / ETH↔WETH 封装 |

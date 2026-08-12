@@ -84,7 +84,7 @@ export function LiquidityConfirmModal({
       }}
     >
       <div
-        className="w-full max-w-md animate-fade-up rounded-t-[20px] border border-white/[0.1] bg-[var(--modal-bg)] p-5 shadow-2xl sm:rounded-[20px]"
+        className="w-full max-w-md animate-fade-up border border-white/[0.1] bg-[var(--modal-bg)] p-5 shadow-2xl rounded-modal-radius"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -194,7 +194,7 @@ export function LiquidityConfirmModal({
         <button
           onClick={onConfirm}
           disabled={isBusy}
-          className="mt-6 flex w-full items-center justify-center gap-2 rounded-[20px] bg-brand-gradient py-4 text-base font-bold text-[#0b0b14] transition hover:brightness-110 disabled:opacity-70"
+          className="mt-6 flex w-full items-center justify-center gap-2 rounded-radius bg-brand-gradient py-4 text-base font-bold text-[#0b0b14] transition hover:brightness-110 disabled:opacity-70"
         >
           {isBusy ? (
             <>

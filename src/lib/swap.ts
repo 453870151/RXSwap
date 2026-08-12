@@ -106,7 +106,7 @@ export function effectiveRate(
   return outNorm / inNorm;
 }
 
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
+export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
 const PAIR_RESERVE_ABI = [
   {

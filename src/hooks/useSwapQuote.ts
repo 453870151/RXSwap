@@ -18,6 +18,7 @@ import {
   computeAutoSlippageBps,
   computePathPriceImpact,
   effectiveRate,
+  ZERO_ADDRESS,
   type Address,
 } from "@/lib/swap";
 
@@ -74,11 +75,22 @@ async function quoteWithRouter(
 
     // 2) Get amounts out for the valid path.
     try {
+      // Input tax: a transfer-fee token deducts `transferFeeBps` on the way in,
+      // so the router only receives `amountIn * (1 - fee)`. Quoting with the
+      // gross amount overestimates the output, making the displayed "received"
+      // optimistic. Discount the input used for the quote so it matches what
+      // actually reaches the pair. The on-chain swap still sells the gross
+      // `amountInWei`; only the displayed quote is corrected here.
+      const inFeeBps = tokenIn.transferFeeBps ?? 0;
+      const amountInForQuote =
+        inFeeBps > 0
+          ? (amountInWei * BigInt(10000 - inFeeBps)) / 10000n
+          : amountInWei;
       const amounts = await publicClient.readContract({
         address: router,
         abi: ROUTER_ABI,
         functionName: "getAmountsOut",
-        args: [amountInWei, path],
+        args: [amountInForQuote, path],
       });
       const out = amounts[amounts.length - 1] as bigint;
       // Fee-on-transfer output tokens deduct a transfer fee on the way out, so
@@ -147,6 +159,10 @@ export function useSwapQuote({
     // Only runs while `enabled` is true and the tab is focused (default
     // refetchIntervalInBackground: false), so it costs nothing when idle.
     refetchInterval: 5_000,
+    // Bound the retry storm: a single transient RPC failure retries once
+    // instead of the default 3 with exponential backoff, which otherwise
+    // pins isFetching (button stuck on "confirming") for ~70s.
+    retry: 1,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<(SwapQuote & { amountOutMin: bigint }) | null> => {
       if (!publicClient || !tokenIn || !tokenOut) return null;
@@ -180,7 +196,9 @@ export function useSwapQuote({
         chainId as number
       );
       const quoteS =
-        routerS !== routerP
+        routerS !== routerP &&
+        routerS !== ZERO_ADDRESS &&
+        factoryS !== ZERO_ADDRESS
           ? await quoteWithRouter(
               publicClient,
               routerS,

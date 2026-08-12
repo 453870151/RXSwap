@@ -158,7 +158,7 @@ export function SwapConfirmModal({
       }}
     >
       <div
-        className="relative w-full max-m-md animate-fade-up rounded-t-[20px] border border-white/[0.06] bg-[var(--modal-bg)] p-5 shadow-2xl sm:rounded-[20px]"
+        className="relative w-full max-m-md animate-fade-up border border-white/[0.06] bg-[var(--modal-bg)] p-5 shadow-2xl rounded-modal-radius"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -248,7 +248,7 @@ export function SwapConfirmModal({
         </button>
 
         {/* Detail card */}
-        <div className="mt-3 space-y-3 rounded-[20px] border border-white/[0.1] bg-[var(--modal-group-bg)] p-4 text-sm">
+        <div className="mt-3 space-y-3 rounded-radius border border-white/[0.1] bg-[var(--modal-group-bg)] p-4 text-sm">
           {/* Rate - always visible */}
           <div className="flex items-center justify-between">
             <span className="text-white/50">{t("swap.exchangeRate")}</span>
@@ -391,7 +391,7 @@ export function SwapConfirmModal({
         <button
           onClick={onConfirm}
           disabled={isBusy}
-          className="mt-5 flex w-full items-center justify-center gap-2 rounded-[20px] bg-brand-gradient py-4 text-base font-bold text-[#0b0b14] transition hover:brightness-110 disabled:opacity-80"
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-radius bg-brand-gradient py-4 text-base font-bold text-[#0b0b14] transition hover:brightness-110 disabled:opacity-80"
         >
           {isBusy ? (
             <>

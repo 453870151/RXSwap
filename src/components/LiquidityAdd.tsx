@@ -6,7 +6,6 @@ import { useAccount, usePublicClient } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseUnits, maxUint256 } from "viem";
 import clsx from "clsx";
-import { bsc } from "wagmi/chains";
 import { getNativeToken, getTokenByAddress, type SwapToken } from "@/config/tokens";
 import { getRouterAddresses, getFactoryAddresses, WNATIVE, SWAP_FEE_BPS } from "@/config/contracts";
 import { FACTORY_ABI } from "@/config/abis/factory";
@@ -25,7 +24,7 @@ import { SlippageSettings, loadSavedSlippage } from "./SlippageSettings";
 import { useTranslation } from "./LanguageProvider";
 import { formatAmount, formatBalance, formatSlippage, formatUsd, formatNumber } from "@/lib/format";
 import { computeMinAmountOut, sqrtBigInt, type Address } from "@/lib/swap";
-import { getChainMeta } from "@/config/chains";
+import { getChainMeta, DEFAULT_CHAIN_ID } from "@/config/chains";
 
 // Map a URL param value ("BNB" for native, an address for ERC20) back to a
 // SwapToken for the active chain.
@@ -45,7 +44,7 @@ export function LiquidityAdd() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { address, isConnected, chainId: connectedChain } = useAccount();
-  const chainId = connectedChain ?? bsc.id;
+  const chainId = connectedChain ?? DEFAULT_CHAIN_ID;
   const publicClient = usePublicClient({ chainId });
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -420,7 +419,7 @@ export function LiquidityAdd() {
         <div className="mt-7 flex gap-20">
           <StepsRail current={1} className="hidden md:flex" />
 
-          <div className="min-w-0 flex-1 rounded-[20px] border border-white/[0.06] p-5 sm:p-6">
+          <div className="min-w-0 flex-1 rounded-radius border border-white/[0.06] p-5 sm:p-6">
             <h2 className="text-[17px] font-bold">{t("liquidity.selectPair")}</h2>
             <p className="mt-1.5 text-[13px] leading-relaxed text-white/45">
               {t("liquidity.selectPairDesc")}
@@ -435,7 +434,7 @@ export function LiquidityAdd() {
             <p className="mt-1.5 text-[13px] leading-relaxed text-white/45">
               {t("liquidity.feeTierDesc", { fee: feePct })}
             </p>
-            <div className="mt-4 rounded-[14px] border border-white/[0.07] px-[18px] py-[15px]">
+            <div className="mt-4 rounded-radius border border-white/[0.07] px-[18px] py-[15px]">
               <div className="text-sm font-bold">
                 {t("liquidity.feeTierCard", { fee: feePct })}
               </div>
@@ -448,7 +447,7 @@ export function LiquidityAdd() {
               onClick={goStep2}
               disabled={!canNext}
               className={clsx(
-                "mt-6 w-full rounded-[20px] py-[15px] text-[15px] font-bold transition",
+                "mt-6 w-full rounded-radius py-[15px] text-[15px] font-bold transition",
                 canNext
                   ? "bg-white text-[#111] hover:bg-white/90"
                   : "cursor-not-allowed bg-[var(--btn-bg)] text-white/35"
@@ -496,7 +495,7 @@ export function LiquidityAdd() {
 
         <div className="min-w-0 flex-1">
           {/* Pair summary card */}
-          <div className="rounded-[20px] border border-white/[0.06] p-5 sm:px-[22px]">
+          <div className="rounded-radius border border-white/[0.06] p-5 sm:px-[22px]">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex flex-none -space-x-2.5">
                 <TokenLogo token={tokenA} size={34} />
@@ -537,7 +536,7 @@ export function LiquidityAdd() {
           </div>
 
           {/* Deposit card */}
-          <div className="mt-4 rounded-[20px] border border-white/[0.06] p-5 sm:p-6">
+          <div className="mt-4 rounded-radius border border-white/[0.06] p-5 sm:p-6">
             <h2 className="text-[17px] font-bold">{t("liquidity.depositTokens")}</h2>
             <p className="mt-1.5 text-[13px] leading-relaxed text-white/45">
               {t("liquidity.depositTokensDesc")}
@@ -576,7 +575,7 @@ export function LiquidityAdd() {
               onClick={() => setShowConfirm(true)}
               disabled={disabled}
               className={clsx(
-                "mt-5 w-full rounded-[20px] py-[15px] text-[15px] font-bold transition",
+                "mt-4 w-full rounded-radius py-[15px] text-[15px] font-bold transition",
                 disabled
                   ? "cursor-not-allowed bg-[var(--btn-bg)] text-white/35"
                   : "bg-brand-gradient text-[#0b0b14] hover:brightness-110"
@@ -586,7 +585,7 @@ export function LiquidityAdd() {
             </button>
 
             {reserves.data && !reserves.data.exists && (
-              <p className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--input-bg)] px-4 py-3 text-xs text-[var(--text-muted)]">
+              <p className="mt-4 rounded-radius border border-[var(--border)] bg-[var(--input-bg)] px-4 py-3 text-xs text-[var(--text-muted)]">
                 {t("liquidity.poolNotExists")}
               </p>
             )}
@@ -635,7 +634,7 @@ function StepsRail({
   return (
     <div
       className={clsx(
-        "w-[300px] flex-none flex-col self-start rounded-[20px] border border-white/[0.06] p-5",
+        "w-[300px] flex-none flex-col self-start border border-white/[0.06] p-5 rounded-radius",
         className
       )}
     >
@@ -706,7 +705,7 @@ function TokenSelectButton({ token, onClick }: { token?: SwapToken; onClick: () 
     return (
       <button
         onClick={onClick}
-        className="flex flex-1 items-center gap-2.5 rounded-[14px] border border-white/[0.06] bg-[var(--btn-bg)] px-4 py-[13px] text-[15px] font-bold transition hover:bg-[#242424]"
+        className="flex flex-1 items-center gap-2.5 rounded-radius border border-white/[0.06] bg-[var(--btn-bg)] px-4 py-[13px] text-[15px] font-bold transition hover:bg-[#242424]"
       >
         <TokenLogo token={token} size={26} />
         {token.symbol}
@@ -717,7 +716,7 @@ function TokenSelectButton({ token, onClick }: { token?: SwapToken; onClick: () 
   return (
     <button
       onClick={onClick}
-      className="flex flex-1 items-center justify-between rounded-[14px] bg-white px-4 py-[13px] text-[15px] font-semibold text-[#111] transition hover:bg-white/90"
+      className="flex flex-1 items-center justify-between rounded-radius bg-white px-4 py-[13px] text-[15px] font-semibold text-[#111] transition hover:bg-white/90"
     >
       {t("liquidity.selectTokens")}
       <span className="text-black/55">{chevron}</span>
@@ -747,7 +746,7 @@ function AmountCard({
   const { t } = useTranslation();
   const showPercent = balance != null && balance > 0n;
   return (
-    <div className="group rounded-2xl border border-white/[0.05] bg-[var(--btn-bg)] px-[18px] py-5">
+    <div className="group rounded-radius border border-white/[0.05] bg-[var(--btn-bg)] px-[18px] py-5">
       <div className="flex items-center justify-between gap-3">
         <input
           inputMode="decimal"
@@ -761,8 +760,7 @@ function AmountCard({
           {token.symbol}
         </div>
       </div>
-      {/* Bottom row: percent chips on the left, wallet balance on the right
-          (same baseline, matching the Uniswap reference). The balance keeps
+      {/* Bottom row: percent chips on the left, wallet balance on the right. The balance keeps
           the row's height constant, so fading the chips in on hover never
           changes the card height. Touch devices have no hover — chips stay
           visible there. */}

@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useAccount, useConnect, usePublicClient } from "wagmi";
 import { maxUint256 } from "viem";
-import { bsc } from "wagmi/chains";
 import { useLiquidityPositions, type LiquidityPosition } from "@/hooks/useLiquidityPositions";
 import { useTokenPrices } from "@/hooks/useAllPools";
 import { useRemoveLiquidity } from "@/hooks/useRemoveLiquidity";
@@ -14,7 +13,7 @@ import { useToast } from "./Toaster";
 import { TokenLogo } from "./TokenLogo";
 import { formatAmount, formatUsd, formatSlippage } from "@/lib/format";
 import { computeMinAmountOut } from "@/lib/swap";
-import { getChainMeta } from "@/config/chains";
+import { getChainMeta, DEFAULT_CHAIN_ID } from "@/config/chains";
 import { getLiquidityAddedAt } from "@/lib/recentLiquidity";
 import { ERC20_ABI } from "@/config/abis/erc20";
 import { getRouterAddresses, WNATIVE, SWAP_FEE_BPS } from "@/config/contracts";
@@ -29,7 +28,7 @@ export function LiquidityList() {
   const router = useRouter();
   const { address, isConnected, chainId: connectedChain } = useAccount();
   const { connect, connectors } = useConnect();
-  const chainId = connectedChain ?? bsc.id;
+  const chainId = connectedChain ?? DEFAULT_CHAIN_ID;
 
   const [removing, setRemoving] = useState<LiquidityPosition | null>(null);
 
@@ -193,7 +192,7 @@ function MineView({
   if (isLoading) {
     return (
       <div
-        className=" w-full max-w-6xl animate-fade-up rounded-3xl p-8 rounded-[20px] border border-[rgba(255,255,255,0.12)]"
+        className="w-full max-w-6xl animate-fade-up p-8 border border-[rgba(255,255,255,0.12)] rounded-radius"
       >
         <div className="shimmer h-4 w-1/2 rounded bg-[var(--input-bg)]" />
         <div className="shimmer mt-3 h-16 w-full rounded-2xl bg-[var(--input-bg)]" />
@@ -220,7 +219,7 @@ function MineView({
         <h2 className="text-lg font-bold sm:text-xl">{t("liquidity.yourPositions")}</h2>
         <button
           onClick={onAdd}
-          className="btn-primary rounded-xl px-4 py-2 text-[13px] font-bold sm:px-[22px] sm:py-[9px] sm:text-sm"
+          className="btn-primary px-4 py-2 text-[13px] font-bold sm:px-[22px] sm:py-[9px] sm:text-sm rounded-radius"
         >
           {t("liquidity.add")}
         </button>
@@ -233,7 +232,7 @@ function MineView({
         return (
         <div
           key={p.pair}
-          className="flex flex-col gap-4 rounded-[20px] p-4 transition border border-[rgba(255,255,255,0.12)] sm:flex-row sm:items-center sm:gap-5 sm:p-6 bg-[var(--liquidity-bg)]"
+          className="flex flex-col gap-4 p-4 transition border border-[rgba(255,255,255,0.12)] sm:flex-row sm:items-center sm:gap-5 sm:p-6 bg-[var(--liquidity-bg)] rounded-radius"
         >
           {/* Left: overlapping logos + pair name / badges / status */}
           <div className="flex min-w-0 items-center gap-4">
@@ -294,13 +293,13 @@ function MineView({
             <div className="flex gap-2.5">
               <button
                 onClick={() => onRemove(p)}
-                className="flex-1 rounded-xl border border-white/[0.14] px-[22px] py-[9px] text-sm font-bold text-white/75 transition hover:bg-white/5 sm:flex-none"
+                className="flex-1 border border-white/[0.14] px-[22px] py-[9px] text-sm font-bold text-white/75 transition hover:bg-white/5 sm:flex-none rounded-radius"
               >
                 {t("liquidity.remove")}
               </button>
               <button
                 onClick={() => onAddFor(p)}
-                className="btn-primary flex-1 rounded-xl px-[22px] py-[9px] text-sm font-bold sm:flex-none"
+                className="btn-primary flex-1 px-[22px] py-[9px] text-sm font-bold sm:flex-none rounded-radius"
               >
                 {t("liquidity.addBtn")}
               </button>
@@ -353,7 +352,7 @@ function AddPlaceholder({ className = "", onClick, compact = false, title, hint 
     <button
       onClick={handleClick}
       className={
-        "flex min-h-[180px] w-full flex-col items-center justify-center gap-2 rounded-3xl border border-[rgba(255,255,255,0.12)] p-5 text-center transition" +
+        "flex min-h-[180px] w-full flex-col items-center justify-center gap-2 border border-[rgba(255,255,255,0.12)] p-5 text-center transition rounded-radius" +
         className
       }
     >
@@ -375,7 +374,7 @@ function QuickStartGuide() {
     { title: t("liquidity.qs3Title"), desc: t("liquidity.qs3Desc") },
   ];
   return (
-    <div className="glass rounded-3xl p-6 !bg-transparent">
+    <div className="glass p-6 !bg-transparent rounded-radius">
       <h4 className="text-sm font-bold">{t("liquidity.quickStart")}</h4>
       <p className="mt-1 text-xs text-[var(--text-muted)]">{t("liquidity.quickStartHint")}</p>
       <div className="mt-4">
@@ -404,7 +403,7 @@ function ConnectPrompt() {
   const { t } = useTranslation();
   const { connect, connectors, isPending } = useConnect();
   return (
-    <div className="glass flex h-full w-full flex-col items-center justify-center rounded-3xl px-6 py-16 text-center !bg-transparent">
+    <div className="glass flex h-full w-full flex-col items-center justify-center px-6 py-16 text-center !bg-transparent rounded-radius">
       <div className="relative mb-6 flex h-20 w-20 items-center justify-center">
         <div
           className="absolute -inset-3 rounded-full"
@@ -431,7 +430,7 @@ function ConnectPrompt() {
       <p className="mt-2 text-sm text-[var(--text-muted)]">{t("liquidity.connectPrompt")}</p>
       <button
         onClick={() => connect({ connector: connectors[0] })}
-        className="btn-primary mt-7 rounded-full px-8 py-3 text-sm font-bold"
+        className="btn-primary mt-7 px-8 py-3 text-sm font-bold rounded-radius"
       >
         {isPending ? t("common.connecting") : t("common.connectWallet")}
       </button>

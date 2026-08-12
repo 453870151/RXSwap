@@ -12,8 +12,8 @@ export const ROUTER_PRIMARY: Record<number, `0x${string}`> = {
   [bsc.id]: "0x10ED43C718714eb63d5aA57B78B54704E256024E",
   [bscTestnet.id]: "0xE72780B9AB78AeC81d28e595727a997FE3bf1563",
   // [bscTestnet.id]: "0xb38f49E2292582002Fb79a4F85B4E9cBBd921DFA",
-  [arbitrum.id]: "0x0000000000000000000000000000000000000000",
-  [arbitrumSepolia.id]: "0x0000000000000000000000000000000000000000",
+  [arbitrum.id]: "0xDa6999c72984FF68C5C89AC14f51b4004EA67700",
+  [arbitrumSepolia.id]: "0xB000B76Ca8DD8C1DEda12f7E3690c6dD926c2daE",
 };
 
 // 主路由 Factory V2
@@ -21,25 +21,25 @@ export const FACTORY_PRIMARY: Record<number, `0x${string}`> = {
   [bsc.id]: "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73",
   [bscTestnet.id]: "0x8aaD0434B130a558e10124d31A62985C9872DE0b",
   // [bscTestnet.id]: "0xA6CDa9aA22A930919fB375Ea7A73d3EB996AB0f7",
-  [arbitrum.id]: "0x0000000000000000000000000000000000000000",
-  [arbitrumSepolia.id]: "0x0000000000000000000000000000000000000000",
+  [arbitrum.id]: "0xcA8005055f0B5Dd136a2D52c94cF3Ae6De53b5e1",
+  [arbitrumSepolia.id]: "0x6b46BD52e9a17D6577a217Dc8044e636d60e3469",
 };
 
 // 次路由 Router V2
 export const ROUTER_SECONDARY: Record<number, `0x${string}`> = {
-  [bsc.id]: "0xA40d547d3A3B835D6DeA72A95384F076d2c58301",
-  [bscTestnet.id]: "0x90e4fE8E7a3AeB4A784f8ff4B8a9C8d495fA3e69",
-  // [bscTestnet.id]: "0xb38f49E2292582002Fb79a4F85B4E9cBBd921DFA",
-  [arbitrum.id]: "0x0000000000000000000000000000000000000000",
-  [arbitrumSepolia.id]: "0x00000000000000000<PASSWORD>",
+  [bsc.id]: "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+  // [bscTestnet.id]: "0x90e4fE8E7a3AeB4A784f8ff4B8a9C8d495fA3e69",
+  [bscTestnet.id]: "0xb38f49E2292582002Fb79a4F85B4E9cBBd921DFA",
+  [arbitrum.id]: "0x8cFe327CEc66d1C090Dd72bd0FF11d690C33a2Eb",
+  [arbitrumSepolia.id]: "0x0000000000000000000000000000000000000000",
 };
 
 // 次路由 Factory V2
 export const FACTORY_SECONDARY: Record<number, `0x${string}`> = {
-  [bsc.id]: "0xCe075f468410061772698f6f22AC0e6512875C56",
-  [bscTestnet.id]: "0x5F63379cCD62C458e417Ae54b5Ac2A399779f492",
-  // [bscTestnet.id]: "0xA6CDa9aA22A930919fB375Ea7A73d3EB996AB0f7",
-  [arbitrum.id]: "0x0000000000000000000000000000000000000000",
+  [bsc.id]: "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73",
+  // [bscTestnet.id]: "0x5F63379cCD62C458e417Ae54b5Ac2A399779f492",
+  [bscTestnet.id]: "0xA6CDa9aA22A930919fB375Ea7A73d3EB996AB0f7",
+  [arbitrum.id]: "0x02a84c1b3BBD7401a5f7fa98a384EBC70bB5749E",
   [arbitrumSepolia.id]: "0x0000000000000000000000000000000000000000",
 };
 
@@ -73,5 +73,5 @@ export const WNATIVE: Record<number, `0x${string}`> = {
   [bsc.id]: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
   [bscTestnet.id]: "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd",
   [arbitrum.id]: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
-  [arbitrumSepolia.id]: "0x980B62Da83cD3dC635Bb4DFBa4C9B6fEEb9f464E",
+  [arbitrumSepolia.id]: "0x980B62Da83eFf3D4576C647993b0c1D7faf17c73",
 };

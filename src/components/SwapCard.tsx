@@ -6,7 +6,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useConnect, usePublicClient, useSwitchChain } from "wagmi";
 import { parseUnits, maxUint256 } from "viem";
 import clsx from "clsx";
-import { bsc } from "wagmi/chains";
 import {
   getTokenList,
   getNativeToken,
@@ -33,7 +32,7 @@ import {
   formatPriceImpact,
   priceImpactColor,
 } from "@/lib/format";
-import { getChainMeta, SUPPORTED_CHAINS } from "@/config/chains";
+import { getChainMeta, SUPPORTED_CHAINS, DEFAULT_CHAIN_ID } from "@/config/chains";
 import { SlippageSettings, loadSavedSlippage } from "./SlippageSettings";
 import { useNativeWrap, useWnativeAllowance } from "@/hooks/useNativeWrap";
 import type { Address } from "@/lib/swap";
@@ -134,11 +133,14 @@ export function SwapCard() {
   const curB = searchParams.get("currencyB");
   const { address, isConnected, chainId: connectedChain, chain } = useAccount();
   // If the connected wallet's chain is configured in the project, use it so the
-  // native token becomes the default "from" token. Otherwise fall back to BSC
-  // (56) for display and surface an "unsupported chain" notice.
+  // native token becomes the default "from" token. Otherwise fall back to the
+  // default chain (DEFAULT_CHAIN_ID) for display and surface an "unsupported
+  // chain" notice.
   const connectedChainSupported =
     isConnected && SUPPORTED_CHAINS.includes(connectedChain ?? -1);
-  const chainId = connectedChainSupported ? (connectedChain as number) : bsc.id;
+  const chainId = connectedChainSupported
+    ? (connectedChain as number)
+    : DEFAULT_CHAIN_ID;
   // Deep-linked tokens from the URL (shared convention with the add-liquidity
   // page). If absent or unresolvable, fall back to the per-chain default pair.
   const linkedIn = curA ? resolveToken(chainId, curA) : undefined;
@@ -201,9 +203,10 @@ export function SwapCard() {
 
   // On chain settle / change: re-resolve the URL tokens against the *new*
   // chainId rather than discarding them. This is essential because on first
-  // load the wallet hasn't reconnected yet, so chainId is the default (56) and
-  // a testnet deep link like currencyA=tBNB wouldn't resolve — then once the
-  // wallet reconnects to testnet (97) we must re-resolve against 97, NOT clear
+  // load the wallet hasn't reconnected yet, so chainId is the default
+  // (DEFAULT_CHAIN_ID) and a testnet deep link like currencyA=tBNB wouldn't
+  // resolve — then once the wallet reconnects to testnet (97) we must
+  // re-resolve against 97, NOT clear
   // the URL. We only fall back to defaults and clear the stale params when the
   // URL tokens genuinely fail to resolve on the settled chain.
   // Tracked via prevChainRef so this only fires on a real chain change after
@@ -686,6 +689,11 @@ export function SwapCard() {
         // On-chain execution reverted — surface as a failure. Keep the typed
         // amount so the user can adjust and retry.
         queryClient.invalidateQueries({ queryKey: ["balance", chainId] });
+        toast({
+          type: "error",
+          position: "top-right",
+          message: t("swap.txReverted"),
+        });
         return;
       }
       // Swap succeeded — refresh balances, clear the input, close the confirm
@@ -718,8 +726,16 @@ export function SwapCard() {
         ),
       });
     } catch (e: any) {
-      // Wallet rejection or other error — swallow. The confirm modal stays
-      // open with the button reset, so the user can retry directly.
+      // Surface the real failure instead of swallowing it. This branch also
+      // catches pre-send estimate failures: when estimation (eth_estimateGas)
+      // reverts, the wallet never broadcasts — which is exactly the "报错但都没
+      // 上链" case. The revert reason is decoded by viem into `shortMessage`
+      const reason = e?.shortMessage || e?.message || "";
+      toast({
+        type: "error",
+        position: "top-right",
+        message: t("swap.txError", { reason }),
+      });
     } finally {
       setBusy(false);
     }
@@ -783,7 +799,7 @@ export function SwapCard() {
   }
 
   return (
-    <div className="w-full max-w-md animate-fade-up">
+    <div className="w-full max-w-md animate-fade-up rounded-[16px] border border-[var(--swap-card-border)] bg-[var(--swap-card-bg)] p-[var(--swap-card-pad)] shadow-[var(--swap-card-shadow)]">
       <div className="flex items-center justify-between px-1 pb-2 pt-1.5">
         {/* Tabs: 兑换 (active) / 限价 (placeholder, disabled) */}
         <div className="flex items-center gap-1">
@@ -791,10 +807,10 @@ export function SwapCard() {
             type="button"
             onClick={() => setActiveTab("swap")}
             className={clsx(
-              "rounded-full px-3.5 py-1.5 text-[15px] font-medium transition",
+              "px-3.5 py-1.5 text-[15px] font-medium transition rounded-radius",
               activeTab === "swap"
-                ? "bg-[#2a2a2a] text-white"
-                : "text-[#9b9b9b] hover:text-white"
+                ? "bg-[var(--setting-bg)] text-[var(--text)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text)]"
             )}
           >
             {t("swap.tabSwap")}
@@ -803,7 +819,7 @@ export function SwapCard() {
             type="button"
             disabled
             title={t("swap.tabLimitSoon")}
-            className="cursor-not-allowed rounded-full px-3.5 py-1.5 text-[15px] font-medium text-[#6b6b6b]"
+            className="cursor-not-allowed rounded-full px-3.5 py-1.5 text-[15px] font-medium text-[var(--text-muted)]"
           >
             {t("swap.tabLimit")}
           </button>
@@ -828,7 +844,7 @@ export function SwapCard() {
           </span>
           <button
             type="button"
-            onClick={() => switchChainAsync({ chainId: SUPPORTED_CHAINS[0] })}
+            onClick={() => switchChainAsync({ chainId: DEFAULT_CHAIN_ID })}
             disabled={switchingChain}
             className="ml-auto rounded-full bg-amber-400/90 px-3 py-1 text-xs font-semibold text-black transition hover:bg-amber-300 disabled:opacity-60"
           >
@@ -847,9 +863,9 @@ export function SwapCard() {
       {/* From / Sell */}
       <div
         className={clsx(
-          "group rounded-[20px] px-4 pb-2.5 pt-3 transition-colors",
+          "group rounded-radius px-4 pb-2.5 pt-3 transition-colors",
           focusedField === "in"
-            ? "border border-[rgba(255,255,255,0.12)]"
+            ? "border border-[var(--input-focus-border)]"
             : "border border-transparent bg-[var(--btn-bg)]"
         )}
       >
@@ -862,7 +878,7 @@ export function SwapCard() {
                   key={pct}
                   type="button"
                   onClick={() => setPercentIn(pct)}
-                  className="rounded-md bg-[#2a2a2a] px-1.5 py-0.5 text-[11px] font-medium text-white transition hover:bg-[#3a3a3a]"
+                  className="rounded-md bg-[var(--setting-bg)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text)] transition hover:bg-[var(--hover)]"
                 >
                   {pct}%
                 </button>
@@ -870,7 +886,7 @@ export function SwapCard() {
               <button
                 type="button"
                 onClick={setMax}
-                className="rounded-md bg-[#2a2a2a] px-1.5 py-0.5 text-[11px] font-medium text-white transition hover:bg-[#3a3a3a]"
+                className="rounded-md bg-[var(--setting-bg)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text)] transition hover:bg-[var(--hover)]"
               >
                 {t("swap.max")}
               </button>
@@ -896,11 +912,11 @@ export function SwapCard() {
                 outRef.current?.focus();
               }
             }}
-            className="w-full bg-transparent text-[32px] font-medium leading-tight-16 text-white outline-none placeholder:text-[#6b6b6b]"
+            className="w-full bg-transparent text-[32px] font-medium leading-tight-16 text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]"
           />
           <TokenButton token={tokenIn} onClick={() => setModalSide("in")} />
         </div>
-        <div className="mb-2 mt-1 flex min-h-[18px] items-center justify-end text-xs text-[#6b6b6b]">
+        <div className="mb-2 mt-1 flex min-h-[18px] items-center justify-end text-xs text-[var(--text-muted)]">
           {tokenIn && (
             <button onClick={setMax} className="transition text-balance">
               {formatAmount(balanceInNum, tokenIn.decimals)} {tokenIn.symbol}
@@ -913,7 +929,7 @@ export function SwapCard() {
       <div className="relative h-0">
         <button
           onClick={flip}
-          className="absolute left-1/2 top-1/2 z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-4 border-[#0e0e0e] bg-[#2a2a2a] text-white transition hover:bg-[#333333]"
+          className="absolute left-1/2 top-1/2 z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-4 border-[var(--swap-flip-ring)] bg-[var(--setting-bg)] text-[var(--text)] transition hover:bg-[var(--hover)]"
           title={t("swap.flip")}
         >
           <svg
@@ -934,9 +950,9 @@ export function SwapCard() {
       {/* To / Buy */}
       <div
         className={clsx(
-          "mt-1 rounded-[20px] px-4 pb-2.5 pt-3 transition-colors",
+          "mt-1 rounded-radius px-4 pb-2.5 pt-3 transition-colors",
           focusedField === "out"
-            ? "border border-[rgba(255,255,255,0.12)]"
+            ? "border border-[var(--input-focus-border)]"
             : "border border-transparent bg-[var(--btn-bg)]"
         )}
       >
@@ -954,13 +970,13 @@ export function SwapCard() {
               if (/^\d*\.?\d*$/.test(v)) onTypeOut(v);
             }}
             className={clsx(
-              "w-full bg-transparent text-[32px] font-medium leading-tight-16 text-white outline-none placeholder:text-[#6b6b6b]",
+              "w-full bg-transparent text-[32px] font-medium leading-tight-16 text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]",
               eitherFeeOnTransfer && "cursor-not-allowed opacity-80"
             )}
           />
           <TokenButton token={tokenOut} onClick={() => setModalSide("out")} />
         </div>
-        <div className="mb-2 mt-1 flex min-h-[18px] items-center justify-end text-xs text-[#6b6b6b]">
+        <div className="mb-2 mt-1 flex min-h-[18px] items-center justify-end text-xs text-[var(--text-muted)]">
           {tokenOut && balanceOut != null && (
             <button onClick={setMaxOut} className="transition text-balance">
               {formatAmount(balanceOutNum, tokenOut.decimals)} {tokenOut.symbol}
@@ -987,14 +1003,14 @@ export function SwapCard() {
         }}
         disabled={disabled}
         className={clsx(
-          "mt-1 flex w-full items-center justify-center gap-2 rounded-[20px] py-4 text-[18px] font-semibold transition",
+          "mt-1 flex w-full items-center justify-center gap-2 rounded-radius py-4 text-[18px] font-semibold transition",
           // Wrap/unwrap fires directly (no confirm modal), so keep the button
           // highlighted (not greyed) even while disabled during the tx — only
           // this pair gets the bright state; every other pair greys out.
           isWrap && disabled
             ? "bg-brand-gradient text-[#0b0b14]"
             : disabled
-            ? "cursor-not-allowed bg-[var(--btn-bg)] text-[#8a8a8a]"
+            ? "cursor-not-allowed bg-[var(--btn-bg)] text-[var(--text-muted)]"
             : "bg-brand-gradient text-[#0b0b14] hover:brightness-105"
         )}
       >
@@ -1030,7 +1046,7 @@ export function SwapCard() {
       {isWrap && hasAmountInput ? (
         // Wrap/unwrap: show only the 1:1 rate line, no slippage / route / fee.
         <div className="mt-3 space-y-3">
-          <div className="flex items-center justify-between text-[0.875rem] text-white/65">
+          <div className="flex items-center justify-between text-[0.875rem] text-[var(--text-muted)]">
             <span>
               {showInverseRate
                 ? `1 ${tokenOut?.symbol} = 1 ${tokenIn?.symbol}`
@@ -1040,7 +1056,7 @@ export function SwapCard() {
               type="button"
               onClick={() => setShowInverseRate((v) => !v)}
               aria-label={t("swap.flip")}
-              className="text-white/65 transition hover:text-white"
+              className="text-[var(--text-muted)] transition hover:text-[var(--text)]"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -1058,7 +1074,7 @@ export function SwapCard() {
         hasAmountInput && activeQuote && (
         <div className="mt-3 space-y-3">
           {/* Rate + slippage single line, directly below the swap button */}
-          <div className="flex items-center justify-between text-[0.875rem] text-white/65">
+          <div className="flex items-center justify-between text-[0.875rem] text-[var(--text-muted)]">
             <button
               onClick={() => setShowInverseRate((v) => !v)}
               className="flex items-center gap-1 hover:text-[var(--text)]"
@@ -1072,7 +1088,7 @@ export function SwapCard() {
                 type="button"
                 onClick={() => setShowDetails((v) => !v)}
                 aria-label={showDetails ? t("swap.hideDetails") : t("swap.showDetails")}
-                className="text-white/65 transition group-hover:text-white hover:text-white"
+                className="text-[var(--text-muted)] transition group-hover:text-[var(--text)] hover:text-[var(--text)]"
               >
                 {t("swap.slippage")}：
                 {autoSlippage
@@ -1083,7 +1099,7 @@ export function SwapCard() {
                 type="button"
                 onClick={() => setShowDetails((v) => !v)}
                 aria-label={showDetails ? t("swap.hideDetails") : t("swap.showDetails")}
-                className="flex items-center text-white/65 transition group-hover:text-white hover:text-white"
+                className="flex items-center text-[var(--text-muted)] transition group-hover:text-[var(--text)] hover:text-[var(--text)]"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -1110,7 +1126,7 @@ export function SwapCard() {
 
           {/* Detail card: minimum received / maximum paid, price impact — collapsible, hidden by default */}
           {showDetails && (
-          <div className="space-y-1.5 rounded-[20px] px-4 py-3 text-xs bg-[var(--btn-bg)]">
+          <div className="space-y-1.5 rounded-radius px-4 py-3 text-xs bg-[var(--btn-bg)]">
             <>
               <Row
                 label={isExactOut ? t("swap.maxPaid") : t("swap.minReceived")}
@@ -1143,7 +1159,7 @@ export function SwapCard() {
 
                 {/* Swap route: BNB → USDT (direct) or BNB → BNB → USDT (via wrapped, shown as BNB) */}
                 <div className="flex items-center justify-between gap-2">
-                  <span className="flex shrink-0 items-center gap-1 text-white/65">
+                  <span className="flex shrink-0 items-center gap-1 text-[var(--text-muted)]">
                     {t("swap.route")}
                     <InfoTip text={t("swap.routeHint")} />
                   </span>
@@ -1253,7 +1269,7 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="flex items-center gap-1 text-white/65">
+      <span className="flex items-center gap-1 text-[var(--text-muted)]">
         {label}
         {hint && <InfoTip text={hint} />}
       </span>
@@ -1291,8 +1307,8 @@ function TokenButton({
       className="flex shrink-0 items-center gap-2 rounded-full bg-sym-select py-1.5 pl-1.5 pr-3 transition"
     >
       <TokenLogo token={token} size={28} />
-      <span className="text-base font-medium text-white">{token.symbol}</span>
-      <svg viewBox="0 0 24 24" fill="none" strokeWidth={8} style={{ width: 18, height: 18, color: "#9b9b9b", transform: "rotate(-90deg)" }}>
+      <span className="text-base font-medium text-[var(--text)]">{token.symbol}</span>
+      <svg viewBox="0 0 24 24" fill="none" strokeWidth={8} style={{ width: 18, height: 18, color: "var(--text-muted)", transform: "rotate(-90deg)" }}>
         <path d="M15.7071 5.29289C16.0976 5.68342 16.0976 6.31658 15.7071 6.70711L10.4142 12L15.7071 17.2929C16.0976 17.6834 16.0976 18.3166 15.7071 18.7071C15.3166 19.0976 14.6834 19.0976 14.2929 18.7071L8.2929 12.7071C7.9024 12.3166 7.9024 11.6834 8.2929 11.2929L14.2929 5.29289C14.6834 4.90237 15.3166 4.90237 15.7071 5.29289Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
       </svg>
     </button>

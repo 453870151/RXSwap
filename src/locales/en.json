@@ -5,12 +5,15 @@
   "nav": {
     "home": "Home",
     "swap": "Swap",
-    "liquidity": "Liquidity"
+    "liquidity": "Liquidity",
+    "bridge": "Bridge",
+    "comingSoon": "Coming soon"
   },
   "bottomNav": {
     "home": "Home",
     "swap": "Swap",
     "liquidity": "Liquidity",
+    "bridge": "Bridge",
     "language": "Language"
   },
   "common": {
@@ -82,6 +85,8 @@
     "unsupportedChain": "{{chain}} is not supported",
     "feeOnTransferNotice": "This is a transfer-fee token (tax / reflection). Only \"exact-input\" mode is supported — you cannot specify an exact amount to receive.",
     "feeOnTransferReceiveHint": "Fee token: auto-calculated",
+    "txError": "Transaction failed: {{reason}}",
+    "txReverted": "Transaction was broadcast but reverted on-chain (not successful).",
     "wrap": "Wrap",
     "unwrap": "Unwrap",
     "wrapSuccess": "Wrapped successfully",
@@ -172,5 +177,10 @@
     "light": "Light",
     "dark": "Dark",
     "system": "System"
+  },
+  "prefs": {
+    "title": "Global Preferences",
+    "theme": "Theme",
+    "language": "Language"
   }
 }

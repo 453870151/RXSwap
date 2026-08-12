@@ -133,11 +133,12 @@ export const DEFAULT_TOKENS: Record<
   },
   [arbitrum.id]: {
     tokenIn: ZERO, // ETH
-    tokenOut: WNATIVE[arbitrum.id], // WETH
+    // tokenOut: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", // USDT
+    tokenOut: "0x53615f4Fe3d2873CF5be7dCBE3331Ca48946aCF7", // Test USDT
   },
   [arbitrumSepolia.id]: {
     tokenIn: ZERO, // ETH
-    tokenOut: WNATIVE[arbitrumSepolia.id], // WETH
+    tokenOut: "0x8aaD0434B130a558e10124d31A62985C9872DE0b", // USDT (testnet)
   },
 };
 
