@@ -1,5 +1,6 @@
-import type { SwapToken } from "@/config/tokens";
+import { getTokenList, type SwapToken } from "@/config/tokens";
 import { FACTORY_ABI } from "@/config/abis/factory";
+import { ROUTER_ABI } from "@/config/abis/router";
 
 export type Address = `0x${string}`;
 
@@ -144,42 +145,242 @@ const PAIR_RESERVE_ABI = [
  * values directly (amount << reserve keeps the Number() precision loss
  * negligible).
  */
-export async function computePathPriceImpact(
+/**
+ * Batch many read-only contract calls into as few JSON-RPC requests as
+ * possible. On chains that expose a multicall3 contract we collapse every
+ * call into a single `multicall` request (allowFailure so a revert in one
+ * call doesn't abort the whole batch); otherwise we fall back to sequential
+ * `readContract` so behaviour is identical on chains without multicall3.
+ */
+type ReadCall = {
+  address: Address;
+  abi: any;
+  functionName: string;
+  args?: readonly any[];
+};
+
+async function batchRead(
   publicClient: any,
-  factory: Address,
+  calls: ReadCall[]
+): Promise<{ status: "success" | "failure"; result: any }[]> {
+  if (calls.length === 0) return [];
+  const multicallAddress = publicClient?.chain?.contracts?.multicall3?.address;
+  if (multicallAddress) {
+    try {
+      const res = await publicClient.multicall({
+        contracts: calls.map((c) => ({
+          address: c.address,
+          abi: c.abi,
+          functionName: c.functionName,
+          args: (c.args ?? []) as readonly any[],
+        })),
+        allowFailure: true,
+      });
+      return res as { status: "success" | "failure"; result: any }[];
+    } catch {
+      // fall through to the sequential fallback below
+    }
+  }
+  return Promise.all(
+    calls.map(async (c) => {
+      try {
+        const result = await publicClient.readContract({
+          address: c.address,
+          abi: c.abi,
+          functionName: c.functionName,
+          args: (c.args ?? []) as readonly any[],
+        });
+        return { status: "success" as const, result };
+      } catch {
+        return { status: "failure" as const, result: undefined };
+      }
+    })
+  );
+}
+
+export type RouteMode = "exactIn" | "exactOut";
+
+export interface RouteResult {
+  /** exactIn: gross amountIn the user entered; exactOut: raw amountIn required. */
+  amountIn: bigint;
+  /** exactIn: net amountOut (after out-token fee); exactOut: desired amountOut. */
+  amountOut: bigint;
+  path: Address[];
+  rate: number;
+  priceImpact?: number;
+  router: Address;
+}
+
+/**
+ * Resolve the best swap route for a token pair with the auto-router's full
+ * path enumeration, but collapse the RPC fan-out into THREE batched stages
+ * instead of one call per candidate path:
+ *   1) getPair existence checks for every adjacency of every candidate path
+ *   2) getAmountsOut / getAmountsIn for the paths that actually exist
+ *   3) getReserves + token0 for the hops of those paths (price-impact only)
+ * The visible behaviour (best output / least input, fee-on-transfer
+ * discounts, price impact) is unchanged from the per-path loop it replaces.
+ */
+export async function findBestRoute(params: {
+  publicClient: any;
+  router: Address;
+  factory: Address;
+  wnative: Address;
+  tokenIn: SwapToken;
+  tokenOut: SwapToken;
+  amountWei: bigint;
+  chainId: number;
+  mode: RouteMode;
+}): Promise<RouteResult | null> {
+  const { publicClient, router, factory, wnative, tokenIn, tokenOut, amountWei, chainId, mode } = params;
+  if (amountWei <= 0n) return null;
+
+  const paths = buildPaths(tokenIn, tokenOut, wnative, getTokenList(chainId));
+  if (paths.length === 0) return null;
+
+  // Stage 1 — batch every getPair existence check across all paths.
+  const pairAdj: { pi: number; hi: number; a: Address; b: Address }[] = [];
+  paths.forEach((path, pi) => {
+    for (let i = 0; i < path.length - 1; i++) {
+      pairAdj.push({ pi, hi: i, a: path[i], b: path[i + 1] });
+    }
+  });
+  const pairResults = await batchRead(
+    publicClient,
+    pairAdj.map((c) => ({
+      address: factory,
+      abi: FACTORY_ABI,
+      functionName: "getPair",
+      args: [c.a, c.b],
+    }))
+  );
+  const pathPairs: (Address | null)[][] = paths.map(() => []);
+  pairAdj.forEach((c, idx) => {
+    const r = pairResults[idx];
+    const addr = r.status === "success" ? (r.result as Address) : null;
+    pathPairs[c.pi].push(
+      addr && (addr as string).toLowerCase() !== ZERO_ADDRESS ? (addr as Address) : null
+    );
+  });
+
+  const candidates = paths
+    .map((path, pi) => ({ path, pairs: pathPairs[pi] }))
+    .filter(
+      (c) =>
+        c.pairs.length === c.path.length - 1 &&
+        c.pairs.every((p) => p !== null)
+    );
+  if (candidates.length === 0) return null;
+
+  // Stage 2 — batch getAmountsOut / getAmountsIn for the candidate paths.
+  const inFeeBps = tokenIn.transferFeeBps ?? 0;
+  const amountForQuote =
+    mode === "exactIn" && inFeeBps > 0
+      ? (amountWei * BigInt(10000 - inFeeBps)) / 10000n
+      : amountWei;
+  const amountResults = await batchRead(
+    publicClient,
+    candidates.map((c) => ({
+      address: router,
+      abi: ROUTER_ABI,
+      functionName: mode === "exactIn" ? "getAmountsOut" : "getAmountsIn",
+      args: [amountForQuote, c.path],
+    }))
+  );
+
+  // Stage 3 — batch getReserves + token0 for every candidate hop (price impact).
+  const reserveAdj: { ci: number; hi: number; pair: Address; kind: "reserves" | "token0" }[] = [];
+  candidates.forEach((c, ci) => {
+    c.pairs.forEach((pair, hi) => {
+      reserveAdj.push({ ci, hi, pair: pair as Address, kind: "reserves" });
+      reserveAdj.push({ ci, hi, pair: pair as Address, kind: "token0" });
+    });
+  });
+  const reserveResults = await batchRead(
+    publicClient,
+    reserveAdj.map((rc) => ({
+      address: rc.pair,
+      abi: PAIR_RESERVE_ABI,
+      functionName: rc.kind === "reserves" ? "getReserves" : "token0",
+      args: [],
+    }))
+  );
+  const reserveByPair = new Map<Address, { reserve0: bigint; reserve1: bigint }>();
+  const token0ByPair = new Map<Address, Address>();
+  reserveAdj.forEach((rc, idx) => {
+    const res = reserveResults[idx];
+    if (res.status !== "success") return;
+    if (rc.kind === "reserves") {
+      const [r0, r1] = res.result as [bigint, bigint];
+      reserveByPair.set(rc.pair, { reserve0: r0, reserve1: r1 });
+    } else {
+      token0ByPair.set(rc.pair, res.result as Address);
+    }
+  });
+
+  let best: RouteResult | null = null;
+  candidates.forEach((c, ci) => {
+    const r = amountResults[ci];
+    if (r.status !== "success") return;
+    const amounts = r.result as readonly bigint[];
+    if (!amounts || amounts.length < 2) return;
+
+    if (mode === "exactIn") {
+      const rawOut = amounts[amounts.length - 1] as bigint;
+      const outFeeBps = tokenOut.transferFeeBps ?? 0;
+      const netOut =
+        outFeeBps > 0 ? (rawOut * BigInt(10000 - outFeeBps)) / 10000n : rawOut;
+      if (netOut <= 0n) return;
+      if (best && netOut <= best.amountOut) return;
+      const priceImpact = computePriceImpactFromData(
+        c.path,
+        c.pairs as Address[],
+        amounts,
+        reserveByPair,
+        token0ByPair
+      );
+      const rate = effectiveRate(amountWei, netOut, tokenIn.decimals, tokenOut.decimals);
+      best = { amountIn: amountWei, amountOut: netOut, path: c.path, rate, priceImpact, router };
+    } else {
+      const rawIn = amounts[0] as bigint;
+      if (rawIn <= 0n) return;
+      if (best && rawIn >= best.amountIn) return;
+      const priceImpact = computePriceImpactFromData(
+        c.path,
+        c.pairs as Address[],
+        amounts,
+        reserveByPair,
+        token0ByPair
+      );
+      const rate = effectiveRate(rawIn, amountWei, tokenIn.decimals, tokenOut.decimals);
+      best = { amountIn: rawIn, amountOut: amountWei, path: c.path, rate, priceImpact, router };
+    }
+  });
+
+  return best;
+}
+
+/** Pure price-impact computation from already-fetched reserves (no RPC). */
+function computePriceImpactFromData(
   path: Address[],
-  amounts: readonly bigint[]
-): Promise<number | undefined> {
+  pairs: Address[],
+  amounts: readonly bigint[],
+  reserveByPair: Map<Address, { reserve0: bigint; reserve1: bigint }>,
+  token0ByPair: Map<Address, Address>
+): number | undefined {
   if (path.length < 2) return undefined;
   let compounded = 0;
   try {
     for (let i = 0; i < path.length - 1; i++) {
-      const pair = await publicClient.readContract({
-        address: factory,
-        abi: FACTORY_ABI,
-        functionName: "getPair",
-        args: [path[i], path[i + 1]],
-      });
-      if (!pair || (pair as Address).toLowerCase() === ZERO_ADDRESS) {
-        return undefined;
-      }
-      const [reserve0, reserve1] = (await publicClient.readContract({
-        address: pair as Address,
-        abi: PAIR_RESERVE_ABI,
-        functionName: "getReserves",
-      })) as [bigint, bigint];
-      const token0 = (await publicClient.readContract({
-        address: pair as Address,
-        abi: PAIR_RESERVE_ABI,
-        functionName: "token0",
-      })) as Address;
+      const pairAddr = pairs[i];
+      const data = reserveByPair.get(pairAddr);
+      const token0 = token0ByPair.get(pairAddr);
+      if (!data || !token0) return undefined;
       const inIsToken0 = token0.toLowerCase() === path[i].toLowerCase();
-      const reserveIn = inIsToken0 ? reserve0 : reserve1;
+      const reserveIn = inIsToken0 ? data.reserve0 : data.reserve1;
       const r = Number(reserveIn);
       const a = Number(amounts[i]);
-      if (!Number.isFinite(r) || !Number.isFinite(a) || r <= 0) {
-        return undefined;
-      }
+      if (!Number.isFinite(r) || !Number.isFinite(a) || r <= 0) return undefined;
       const p = a / (r + a);
       compounded = 1 - (1 - compounded) * (1 - p);
     }

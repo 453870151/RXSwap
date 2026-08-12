@@ -225,15 +225,30 @@ export function SwapCard() {
     const nextIn = a ? resolveToken(chainId, a) : undefined;
     const nextOut = b ? resolveToken(chainId, b) : undefined;
 
-    if (nextIn || nextOut) {
-      // URL tokens still valid on the settled chain → adopt them, keep URL.
-      setTokenIn(nextIn ?? getDefaultTokenIn(chainId));
-      setTokenOut(nextOut ?? getDefaultTokenOut(chainId));
-    } else {
-      // Stale params for this chain → reset to defaults and clear URL.
-      setTokenIn(getDefaultTokenIn(chainId));
-      setTokenOut(getDefaultTokenOut(chainId));
-      router.replace("/swap", { scroll: false });
+    // Adopt whichever URL tokens still resolve on the new chain; unsupported
+    // sides fall back to the per-chain default. Crucially, a token address that
+    // exists on the *previous* chain but not the new one (e.g. a BSC-only token
+    // carried into Arbitrum) must be dropped from the URL even when the *other*
+    // token resolved — otherwise the stale address lingers in the address bar.
+    // We only rewrite when something actually went stale, so a fully-resolving
+    // deep link is left untouched (and the first-mount guard above already
+    // protects deep links before the wallet reconnects).
+    setTokenIn(nextIn ?? getDefaultTokenIn(chainId));
+    setTokenOut(nextOut ?? getDefaultTokenOut(chainId));
+
+    let stale = false;
+    const params = new URLSearchParams();
+    if (a) {
+      if (nextIn) params.set("currencyA", paramValue(nextIn)!);
+      else stale = true;
+    }
+    if (b) {
+      if (nextOut) params.set("currencyB", paramValue(nextOut)!);
+      else stale = true;
+    }
+    if (stale) {
+      const qs = params.toString();
+      router.replace(qs ? `/swap?${qs}` : "/swap", { scroll: false });
     }
     setTypedValue("");
     setIndependentField("in");

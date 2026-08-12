@@ -4,20 +4,16 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
 import { parseUnits, formatUnits } from "viem";
 import type { SwapToken } from "@/config/tokens";
-import { getTokenList } from "@/config/tokens";
 import {
   getRouterAddresses,
   getFactoryAddresses,
   WNATIVE,
 } from "@/config/contracts";
-import { FACTORY_ABI } from "@/config/abis/factory";
-import { ROUTER_ABI } from "@/config/abis/router";
 import {
-  buildPaths,
   computeMaxAmountIn,
   computeAutoSlippageBps,
-  computePathPriceImpact,
-  effectiveRate,
+  findBestRoute,
+  ZERO_ADDRESS,
   type Address,
 } from "@/lib/swap";
 
@@ -44,72 +40,8 @@ interface QuoteOutParams {
   chainId: number | undefined;
 }
 
-// Mirror of quoteWithRouter but for the EXACT-OUT direction: given a desired
-// output amount, resolve the required input amount via router.getAmountsIn.
-async function quoteWithRouterOut(
-  publicClient: any,
-  router: Address,
-  factory: Address,
-  wnative: Address,
-  tokenIn: SwapToken,
-  tokenOut: SwapToken,
-  amountOutWei: bigint,
-  chainId: number
-): Promise<Omit<SwapQuoteOut, "slippageBps"> | null> {
-  const paths = buildPaths(tokenIn, tokenOut, wnative, getTokenList(chainId));
-
-  // Visit every candidate path and keep the one requiring the LEAST input
-  // (best price), so an indirect route is chosen only when it beats the direct.
-  let best: Omit<SwapQuoteOut, "slippageBps"> | null = null;
-  for (const path of paths) {
-    // 1) Verify every adjacent pair exists in this factory.
-    const pairChecks = await Promise.all(
-      path.slice(0, -1).map((_, i) =>
-        publicClient.readContract({
-          address: factory,
-          abi: FACTORY_ABI,
-          functionName: "getPair",
-          args: [path[i], path[i + 1]],
-        })
-      )
-    );
-    const exists = pairChecks.every(
-      (p: Address) => p && p !== "0x0000000000000000000000000000000000000000"
-    );
-    if (!exists) continue;
-
-    // 2) Get amounts in for the valid path (reverse of getAmountsOut).
-    try {
-      const amounts = await publicClient.readContract({
-        address: router,
-        abi: ROUTER_ABI,
-        functionName: "getAmountsIn",
-        args: [amountOutWei, path],
-      });
-      const inWei = amounts[0] as bigint;
-      if (inWei > 0n && (!best || inWei < best.amountIn)) {
-        const rate = effectiveRate(
-          inWei,
-          amountOutWei,
-          tokenIn.decimals,
-          tokenOut.decimals
-        );
-        // Compound price impact across all hops of this path (direct or
-        // bridged), so the "—" placeholder never shows for a real quote.
-        const priceImpact = await computePathPriceImpact(
-          publicClient,
-          factory,
-          path,
-          amounts as readonly bigint[]
-        );
-        best = { amountIn: inWei, amountInMax: inWei, path, rate, priceImpact, router };
-      }
-    } catch {
-      // path not tradeable through this router
-    }
-  }
-  return best;
-}
+// Route resolution is shared with the exact-in hook via `findBestRoute`
+// in @/lib/swap (batched multicall + primary-first fallback).
 
 export function useSwapQuoteOut({
   tokenIn,
@@ -167,44 +99,44 @@ export function useSwapQuoteOut({
         chainId as number
       );
 
-      // Query both routers and pick the one requiring the least input. If the
-      // primary pair has been almost drained, its required input can spike; we
-      // must not prefer it over a healthy secondary pair.
-      const quoteP = await quoteWithRouterOut(
+      // Primary-first auto-router: quote the primary router, and only fall
+      // back to the secondary router when the primary yields no route. This
+      // avoids running the full path-search fan-out on BOTH routers when the
+      // primary already has liquidity.
+      const quoteP = await findBestRoute({
         publicClient,
-        routerP,
-        factoryP,
+        router: routerP,
+        factory: factoryP,
         wnative,
         tokenIn,
         tokenOut,
-        amountOutWei,
-        chainId as number
-      );
+        amountWei: amountOutWei,
+        chainId: chainId as number,
+        mode: "exactOut",
+      });
       const quoteS =
-        routerS !== routerP
-          ? await quoteWithRouterOut(
+        !quoteP && routerS !== routerP && routerS !== ZERO_ADDRESS && factoryS !== ZERO_ADDRESS
+          ? await findBestRoute({
               publicClient,
-              routerS,
-              factoryS,
+              router: routerS,
+              factory: factoryS,
               wnative,
               tokenIn,
               tokenOut,
-              amountOutWei,
-              chainId as number
-            )
+              amountWei: amountOutWei,
+              chainId: chainId as number,
+              mode: "exactOut",
+            })
           : null;
 
-      let quote: Omit<SwapQuoteOut, "slippageBps"> | null = quoteP ?? quoteS;
-      if (quoteS && quoteP) {
-        quote = quoteS.amountIn < quoteP.amountIn ? quoteS : quoteP;
-      }
+      const quote = quoteP ?? quoteS;
 
       if (!quote) return null;
 
       // Resolve the effective slippage: auto derives it from the live price
       // impact (clamped to [0.5%, 5%]); manual uses the user's fixed value.
       // priceImpact is already computed (per-hop compounded) inside
-      // quoteWithRouterOut, so it's valid for both direct and bridged routes.
+      // findBestRoute, so it's valid for both direct and bridged routes.
       const effectiveBps = autoSlippage
         ? computeAutoSlippageBps(quote.priceImpact)
         : slippageBps;

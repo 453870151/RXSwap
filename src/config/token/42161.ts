@@ -34,18 +34,18 @@ export const tokens: SwapToken[] = [
     decimals: 18,
     chainId: arbitrum.id,
   },
-  {
-    address: "0x3161B83D0fC23cE80a5fdB078c6b13e6378f1638",
-    symbol: "RXTest002",
-    name: "RXTest002 Token",
-    decimals: 18,
-    chainId: arbitrum.id,
-  },
-  {
-    address: "0x4Ae89EbF705E33cfa3d58A3a4eBD6078B36Ca2E7",
-    symbol: "RXTest003",
-    name: "RXTest003 Token",
-    decimals: 18,
-    chainId: arbitrum.id,
-  },
+  // {
+  //   address: "0x3161B83D0fC23cE80a5fdB078c6b13e6378f1638",
+  //   symbol: "RXTest002",
+  //   name: "RXTest002 Token",
+  //   decimals: 18,
+  //   chainId: arbitrum.id,
+  // },
+  // {
+  //   address: "0x4Ae89EbF705E33cfa3d58A3a4eBD6078B36Ca2E7",
+  //   symbol: "RXTest003",
+  //   name: "RXTest003 Token",
+  //   decimals: 18,
+  //   chainId: arbitrum.id,
+  // },
 ];

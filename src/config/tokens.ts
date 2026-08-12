@@ -125,7 +125,8 @@ export const DEFAULT_TOKENS: Record<
 > = {
   [bsc.id]: {
     tokenIn: ZERO, // BNB
-    tokenOut: "0x55d398326f99059fF775485246999027B3197955", // USDT
+    // tokenOut: "0x55d398326f99059fF775485246999027B3197955", // USDT
+    tokenOut: "0xca8005055f0b5dd136a2d52c94cf3ae6de53b5e1", // Test USDT
   },
   [bscTestnet.id]: {
     tokenIn: ZERO, // tBNB

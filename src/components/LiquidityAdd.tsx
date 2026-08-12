@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAccount, usePublicClient } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
@@ -88,6 +88,52 @@ export function LiquidityAdd() {
       router.replace("/liquidity/add?step=1", { scroll: false });
     }
   }, [isConnected, step, tokenA, tokenB, router]);
+
+  // On chain change: prune any currencyA/currencyB param that no longer
+  // resolves on the new chain (e.g. a BSC-only token carried into Arbitrum),
+  // mirroring the Swap page. Token state here is URL-derived, so we simply
+  // rewrite the URL — keeping `step` and any other params — and clear the
+  // amount on a side whose token was dropped (so a stale number isn't left
+  // beside a now-unselected token). The first-mount guard protects deep links
+  // before the wallet reconnects, and we only rewrite when something went
+  // stale so a fully-resolving deep link is left untouched.
+  const prevChainRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (prevChainRef.current === null) {
+      prevChainRef.current = chainId;
+      return;
+    }
+    if (prevChainRef.current === chainId) return;
+    prevChainRef.current = chainId;
+
+    const a = searchParams.get("currencyA");
+    const b = searchParams.get("currencyB");
+    if (!a && !b) return; // nothing to prune
+
+    const nextA = a ? resolveToken(chainId, a) : undefined;
+    const nextB = b ? resolveToken(chainId, b) : undefined;
+
+    let stale = false;
+    const params = new URLSearchParams(searchParams.toString());
+    if (a && !nextA) {
+      params.delete("currencyA");
+      stale = true;
+      setAmountA("");
+      setPctA(null);
+    }
+    if (b && !nextB) {
+      params.delete("currencyB");
+      stale = true;
+      setAmountB("");
+      setPctB(null);
+    }
+    if (stale) {
+      const qs = params.toString();
+      router.replace(qs ? `/liquidity/add?${qs}` : "/liquidity/add", {
+        scroll: false,
+      });
+    }
+  }, [chainId, router, searchParams]);
 
   const reserves = usePairReserves(tokenA, tokenB, chainId);
   const { data: balA } = useTokenBalance(tokenA, address, chainId);
