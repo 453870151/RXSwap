@@ -754,8 +754,17 @@ export function SwapCard() {
 
   let buttonLabel = t("swap.title");
   let disabled = false;
-  if (!isConnected)
-    buttonLabel = connecting ? t("common.connecting") : t("common.connectWallet");
+  if (!isConnected) {
+    // Quotes are fetched via the public client (read-only, no wallet needed),
+    // so a price is computed even before connecting. While it's resolving we
+    // surface the fetching state on the button; once it returns (whether or
+    // not a route exists) the button reverts to its connect action.
+    if (hasAmountInput && isFetchingQuote) {
+      buttonLabel = t("swap.fetchingQuote");
+    } else {
+      buttonLabel = connecting ? t("common.connecting") : t("common.connectWallet");
+    }
+  }
   else if (unsupportedChain) {
     buttonLabel = t("swap.unsupportedChain", {
       chain: unsupportedChainLabel(connectedChain),
@@ -1071,7 +1080,7 @@ export function SwapCard() {
           </div>
         </div>
       ) : (
-        hasAmountInput && activeQuote && (
+        hasAmountInput && activeQuote && !isFetchingQuote && (
         <div className="mt-3 space-y-3">
           {/* Rate + slippage single line, directly below the swap button */}
           <div className="flex items-center justify-between text-[0.875rem] text-[var(--text-muted)]">
