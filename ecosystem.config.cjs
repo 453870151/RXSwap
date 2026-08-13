@@ -20,8 +20,7 @@ module.exports = {
       script: "node_modules/.bin/next",
       args: "start -p 3000",
       cwd: __dirname,
-      // 单实例足够；若服务器多核且想分摊负载，可改：
-      //   exec_mode: "cluster", instances: "max"
+
       exec_mode: "fork",
       instances: 1,
       autorestart: true,
