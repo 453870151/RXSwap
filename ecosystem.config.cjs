@@ -10,7 +10,7 @@
  * 更新代码后：
  *   git pull && npm ci && npm run build && pm2 reload rxswap
  *
- * 端口说明：next start 默认 3000（与 dev 的 3001 不同），这里显式指定。
+ * 端口说明：next start 默认 3000。
  * 环境变量：next start 会自动读取同目录的 .env.production，无需在此重复写。
  */
 module.exports = {

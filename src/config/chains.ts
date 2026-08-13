@@ -46,9 +46,9 @@ export const CHAIN_META: Record<number, ChainMeta> = {
 
 export const SUPPORTED_CHAINS: number[] = [
   arbitrum.id,
-  arbitrumSepolia.id,
+  // arbitrumSepolia.id,
   bsc.id,
-  bscTestnet.id,
+  // bscTestnet.id,
 ];
 
 // Default chain shown when no wallet is connected (or the connected wallet is
