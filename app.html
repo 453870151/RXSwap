@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RX EXCHANGE</title>
+    <script>
+      // APP 入口：下载静态 out/ 后用 webview 打开本文件即进入 APP 模式。
+      // 不依赖任何原生 JS 注入（file/本地服务均可）；写 localStorage 兜底，
+      // 再跳转到带 ?app=1 的首页，由 AppModeProvider / 首帧 inline script 接管。
+      try {
+        document.documentElement.classList.add("app-mode");
+        localStorage.setItem("appMode", "1");
+      } catch (e) {}
+      location.replace("./?app=1");
+    </script>
+  </head>
+  <body></body>
+</html>
