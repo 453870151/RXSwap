@@ -1,0 +1,15 @@
+{
+  "name": "RxExchange arbitrumSepolia Default",
+  "timestamp": "2026-09-22T00:00:00.000Z",
+  "logoURI": "https://app.rxexchange.io/images/logo.png",
+  "tokens": [
+    {
+      "name": "Tether USD",
+      "symbol": "USDT",
+      "address": "0x8aaD0434B130a558e10124d31A62985C9872DE0b",
+      "chainId": 421614,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/421614/0x8aad0434b130a558e10124d31a62985c9872de0b.png"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "RxExchange bscTestnet Default",
+  "timestamp": "2026-09-22T00:00:00.000Z",
+  "logoURI": "https://app.rxexchange.io/images/logo.png",
+  "tokens": [
+    {
+      "name": "Tether USD",
+      "symbol": "USDT",
+      "address": "0x44004827f2f72566e12884a38f63f72f2a5143ea",
+      "chainId": 97,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/97/0x44004827f2f72566e12884a38f63f72f2a5143ea.png"
+    }
+  ]
+}
