@@ -1,0 +1,502 @@
+{
+  "name": "RxExchange Arbitrum Default",
+  "timestamp": "2026-09-22T00:00:00.000Z",
+  "logoURI": "https://app.rxexchange.io/images/logo.png",
+  "tokens": [
+    {
+      "name": "Tether USDT",
+      "symbol": "USDT",
+      "address": "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
+      "chainId": 42161,
+      "decimals": 6,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9.png"
+    },
+    {
+      "name": "RXR Token",
+      "symbol": "RXR",
+      "address": "0x684aF1E5bA01EE7ddD4053da6ddFb6aBe4bEb3e2",
+      "chainId": 42161,
+      "decimals": 18
+    },
+    {
+      "name": "Wrapped Ether",
+      "symbol": "WETH",
+      "address": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x82af49447d8a07e3bd95bd0d56f35241523fbab1.png"
+    },
+    {
+      "name": "USD Coin",
+      "symbol": "USDC",
+      "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+      "chainId": 42161,
+      "decimals": 6,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xaf88d065e77c8cc2239327c5edb3a432268e5831.png"
+    },
+    {
+      "name": "Bridged USDC",
+      "symbol": "USDC.e",
+      "address": "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8",
+      "chainId": 42161,
+      "decimals": 6,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xff970a61a04b1ca14834a43f5de4533ebddb5cc8.png"
+    },
+    {
+      "name": "Arbitrum",
+      "symbol": "ARB",
+      "address": "0x912CE59144191C1204E64559FE8253a0e49E6548",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x912ce59144191c1204e64559fe8253a0e49e6548.png"
+    },
+    {
+      "name": "Wrapped BTC",
+      "symbol": "WBTC",
+      "address": "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f",
+      "chainId": 42161,
+      "decimals": 8,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x2f2a2543b76a4166549f7aab2e75bef0aefc5b0f.png"
+    },
+    {
+      "name": "PancakeSwap Token",
+      "symbol": "CAKE",
+      "address": "0x1b896893dfc86bb67Cf57767298b9073D2c1bA2c",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x1b896893dfc86bb67cf57767298b9073d2c1ba2c.png"
+    },
+    {
+      "name": "Level Token",
+      "symbol": "LVL",
+      "address": "0xB64E280e9D1B5DbEc4AcceDb2257A87b400DB149",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xb64e280e9d1b5dbec4accedb2257a87b400db149.png"
+    },
+    {
+      "name": "Magpie Token",
+      "symbol": "MGP",
+      "address": "0xa61F74247455A40b01b0559ff6274441FAfa22A3",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xa61f74247455a40b01b0559ff6274441fafa22a3.png"
+    },
+    {
+      "name": "Wrapped liquid staked Ether 2.0",
+      "symbol": "wstETH",
+      "address": "0x5979D7b546E38E414F7E9822514be443A4800529",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x5979d7b546e38e414f7e9822514be443a4800529.png"
+    },
+    {
+      "name": "Gravita Debt Token",
+      "symbol": "GRAI",
+      "address": "0x894134a25a5faC1c2C26F1d8fBf05111a3CB9487",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x894134a25a5fac1c2c26f1d8fbf05111a3cb9487.png"
+    },
+    {
+      "name": "Equilibria Token",
+      "symbol": "EQB",
+      "address": "0xBfbCFe8873fE28Dfa25f1099282b088D52bbAD9C",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xbfbcfe8873fe28dfa25f1099282b088d52bbad9c.png"
+    },
+    {
+      "name": "Rocket Pool ETH",
+      "symbol": "rETH",
+      "address": "0xEC70Dcb4A1EFa46b8F2D97C310C9c4790ba5ffA8",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xec70dcb4a1efa46b8f2d97c310c9c4790ba5ffa8.png"
+    },
+    {
+      "name": "Staked agEUR",
+      "symbol": "stEUR",
+      "address": "0x004626A008B1aCdC4c74ab51644093b155e59A23",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x004626a008b1acdc4c74ab51644093b155e59a23.png"
+    },
+    {
+      "name": "Kujira native asset",
+      "symbol": "KUJI",
+      "address": "0x3A18dcC9745eDcD1Ef33ecB93b0b6eBA5671e7Ca",
+      "chainId": 42161,
+      "decimals": 6,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x3a18dcc9745edcd1ef33ecb93b0b6eba5671e7ca.png"
+    },
+    {
+      "name": "DMT",
+      "symbol": "DMT",
+      "address": "0x8B0E6f19Ee57089F7649A455D89D7bC6314D04e8",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x8b0e6f19ee57089f7649a455d89d7bc6314d04e8.png"
+    },
+    {
+      "name": "swETH",
+      "symbol": "swETH",
+      "address": "0xbc011A12Da28e8F0f528d9eE5E7039E22F91cf18",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xbc011a12da28e8f0f528d9ee5e7039e22f91cf18.png"
+    },
+    {
+      "name": "GMX",
+      "symbol": "GMX",
+      "address": "0xfc5A1A6EB076a2C7aD06eD22C90d7E710E35ad0a",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xfc5a1a6eb076a2c7ad06ed22c90d7e710e35ad0a.png"
+    },
+    {
+      "name": "ChainLink Token",
+      "symbol": "LINK",
+      "address": "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xf97f4df75117a78c1a5a0dbb814af92458539fb4.png"
+    },
+    {
+      "name": "Axelar Wrapped USDC",
+      "symbol": "axlUSDC",
+      "address": "0xEB466342C4d449BC9f53A865D5Cb90586f405215",
+      "chainId": 42161,
+      "decimals": 6,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xeb466342c4d449bc9f53a865d5cb90586f405215.png"
+    },
+    {
+      "name": "Pendle",
+      "symbol": "PENDLE",
+      "address": "0x0c880f6761F1af8d9Aa9C466984b80DAb9a8c9e8",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x0c880f6761f1af8d9aa9c466984b80dab9a8c9e8.png"
+    },
+    {
+      "name": "mPendle",
+      "symbol": "mPENDLE",
+      "address": "0xB688BA096b7Bb75d7841e47163Cd12D18B36A5bF",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xb688ba096b7bb75d7841e47163cd12d18b36a5bf.png"
+    },
+    {
+      "name": "StargateToken",
+      "symbol": "STG",
+      "address": "0x6694340fc020c5E6B96567843da2df01b2CE1eb6",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x6694340fc020c5e6b96567843da2df01b2ce1eb6.png"
+    },
+    {
+      "name": "Dai Stablecoin",
+      "symbol": "DAI",
+      "address": "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xda10009cbd5d07dd0cecc66161fc93d7c9000da1.png"
+    },
+    {
+      "name": "Radiant",
+      "symbol": "RDNT",
+      "address": "0x3082CC23568eA640225c2467653dB90e9250AaA0",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x3082cc23568ea640225c2467653db90e9250aaa0.png"
+    },
+    {
+      "name": "MAGIC",
+      "symbol": "MAGIC",
+      "address": "0x539bdE0d7Dbd336b79148AA742883198BBF60342",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x539bde0d7dbd336b79148aa742883198bbf60342.png"
+    },
+    {
+      "name": "Xai",
+      "symbol": "XAI",
+      "address": "0x4Cb9a7AE498CEDcBb5EAe9f25736aE7d428C9D66",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x4cb9a7ae498cedcbb5eae9f25736ae7d428c9d66.png"
+    },
+    {
+      "name": "USD+",
+      "symbol": "USD+",
+      "address": "0xe80772Eaf6e2E18B651F160Bc9158b2A5caFCA65",
+      "chainId": 42161,
+      "decimals": 6,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xe80772eaf6e2e18b651f160bc9158b2a5cafca65.png"
+    },
+    {
+      "name": "USDT+",
+      "symbol": "USDT+",
+      "address": "0xb1084db8D3C05CEbd5FA9335dF95EE4b8a0edc30",
+      "chainId": 42161,
+      "decimals": 6,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xb1084db8d3c05cebd5fa9335df95ee4b8a0edc30.png"
+    },
+    {
+      "name": "ETH+",
+      "symbol": "ETH+",
+      "address": "0xD4939D69B31fbE981ed6904A3aF43Ee1dc777Aab",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xd4939d69b31fbe981ed6904a3af43ee1dc777aab.png"
+    },
+    {
+      "name": "OVN",
+      "symbol": "OVN",
+      "address": "0xA3d1a8DEB97B111454B294E2324EfAD13a9d8396",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xa3d1a8deb97b111454b294e2324efad13a9d8396.png"
+    },
+    {
+      "name": "Wrapped BNB",
+      "symbol": "WBNB",
+      "address": "0xa9004A5421372E1D83fB1f85b0fc986c912f91f3",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xa9004a5421372e1d83fb1f85b0fc986c912f91f3.png"
+    },
+    {
+      "name": "USDV",
+      "symbol": "USDV",
+      "address": "0x323665443CEf804A3b5206103304BD4872EA4253",
+      "chainId": 42161,
+      "decimals": 6,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x323665443cef804a3b5206103304bd4872ea4253.png"
+    },
+    {
+      "name": "Magpie locked DLP",
+      "symbol": "mDLP",
+      "address": "0xfe14F790DA92971131544d915c4ADa6F1abce3Bd",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xfe14f790da92971131544d915c4ada6f1abce3bd.png"
+    },
+    {
+      "name": "RDNT-WETH",
+      "symbol": "DLP",
+      "address": "0x32dF62dc3aEd2cD6224193052Ce665DC18165841",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x32df62dc3aed2cd6224193052ce665dc18165841.png"
+    },
+    {
+      "name": "Wrapped eETH",
+      "symbol": "weETH",
+      "address": "0x35751007a407ca6FEFfE80b3cB397736D2cf4dbe",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x35751007a407ca6feffe80b3cb397736d2cf4dbe.png"
+    },
+    {
+      "name": "Renzo Restaked ETH",
+      "symbol": "ezETH",
+      "address": "0x2416092f143378750bb29b79eD961ab195CcEea5",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x2416092f143378750bb29b79ed961ab195cceea5.png"
+    },
+    {
+      "name": "Fluidity",
+      "symbol": "FLY",
+      "address": "0x000F1720A263f96532D1ac2bb9CDC12b72C6f386",
+      "chainId": 42161,
+      "decimals": 6,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x000f1720a263f96532d1ac2bb9cdc12b72c6f386.png"
+    },
+    {
+      "name": "TIA",
+      "symbol": "TIA.n",
+      "address": "0xD56734d7f9979dD94FAE3d67C7e928234e71cD4C",
+      "chainId": 42161,
+      "decimals": 6,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xd56734d7f9979dd94fae3d67c7e928234e71cd4c.png"
+    },
+    {
+      "name": "Wootrade Network",
+      "symbol": "WOO",
+      "address": "0xcAFcD85D8ca7Ad1e1C6F82F651fA15E33AEfD07b",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xcafcd85d8ca7ad1e1c6f82f651fa15e33aefd07b.png"
+    },
+    {
+      "name": "Magic Internet Money",
+      "symbol": "MIM",
+      "address": "0xFEa7a6a0B346362BF88A9e4A88416B77a57D6c2A",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xfea7a6a0b346362bf88a9e4a88416b77a57d6c2a.png"
+    },
+    {
+      "name": "KelpDao Restaked ETH",
+      "symbol": "rsETH",
+      "address": "0x4186BFC76E2E237523CBC30FD220FE055156b41F",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x4186bfc76e2e237523cbc30fd220fe055156b41f.png"
+    },
+    {
+      "name": "ETHx",
+      "symbol": "ETHx",
+      "address": "0xED65C5085a18Fa160Af0313E60dcc7905E944Dc7",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xed65c5085a18fa160af0313e60dcc7905e944dc7.png"
+    },
+    {
+      "name": "Fluid USDC",
+      "symbol": "fUSDC",
+      "address": "0x4CFA50B7Ce747e2D61724fcAc57f24B748FF2b2A",
+      "chainId": 42161,
+      "decimals": 6,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x4cfa50b7ce747e2d61724fcac57f24b748ff2b2a.png"
+    },
+    {
+      "name": "LayerZero",
+      "symbol": "ZRO",
+      "address": "0x6985884C4392D348587B19cb9eAAf157F13271cd",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x6985884c4392d348587b19cb9eaaf157f13271cd.png"
+    },
+    {
+      "name": "IDIA",
+      "symbol": "IDIA",
+      "address": "0x6Db8b088c4d41d622B44CD81B900bA690f2d496C",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x6db8b088c4d41d622b44cd81b900ba690f2d496c.png"
+    },
+    {
+      "name": "SX Network",
+      "symbol": "SX",
+      "address": "0x8CF7e3aa6fAf6Ae180E5eC3f0fb95081C2086eBe",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x8cf7e3aa6faf6ae180e5ec3f0fb95081c2086ebe.png"
+    },
+    {
+      "name": "Solv BTC",
+      "symbol": "SolvBTC",
+      "address": "0x3647c54c4c2C65bC7a2D63c0Da2809B399DBBDC0",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x3647c54c4c2c65bc7a2d63c0da2809b399dbbdc0.png"
+    },
+    {
+      "name": "SolvBTC Ethena",
+      "symbol": "SolvBTC.ENA",
+      "address": "0xaFAfd68AFe3fe65d376eEC9Eab1802616cFacCb8",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xafafd68afe3fe65d376eec9eab1802616cfaccb8.png"
+    },
+    {
+      "name": "Subsquid",
+      "symbol": "SQD",
+      "address": "0x1337420dED5ADb9980CFc35f8f2B054ea86f8aB1",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x1337420ded5adb9980cfc35f8f2b054ea86f8ab1.png"
+    },
+    {
+      "name": "Bridged mstETH",
+      "symbol": "Bridged mstETH",
+      "address": "0xE367d4b1b9bB40e34aDCE448e1edb0141Fc6a8AC",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xe367d4b1b9bb40e34adce448e1edb0141fc6a8ac.png"
+    },
+    {
+      "name": "Tap Token",
+      "symbol": "TAP",
+      "address": "0x2C650dAb03A59332e2E0C0C4A7F726913e5028C1",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x2c650dab03a59332e2e0c0c4a7f726913e5028c1.png"
+    },
+    {
+      "name": "Graph Token",
+      "symbol": "GRT",
+      "address": "0x9623063377AD1B27544C965cCd7342f7EA7e88C7",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x9623063377ad1b27544c965ccd7342f7ea7e88c7.png"
+    },
+    {
+      "name": "USDe",
+      "symbol": "USDe",
+      "address": "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34.png"
+    },
+    {
+      "name": "ETHPlus",
+      "symbol": "ETH+",
+      "address": "0x18C14C2D707b2212e17d1579789Fc06010cfca23",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x18c14c2d707b2212e17d1579789fc06010cfca23.png"
+    },
+    {
+      "name": "SolvBTC Babylon",
+      "symbol": "SolvBTC.BBN",
+      "address": "0x346c574C56e1A4aAa8dc88Cda8F7EB12b39947aB",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x346c574c56e1a4aaa8dc88cda8f7eb12b39947ab.png"
+    },
+    {
+      "name": "SEED",
+      "symbol": "SEED",
+      "address": "0x86f65121804D2Cdbef79F9f072D4e0c2eEbABC08",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x86f65121804d2cdbef79f9f072d4e0c2eebabc08.png"
+    },
+    {
+      "name": "Wormhole Wrapped USDT",
+      "symbol": "wxUSDT",
+      "address": "0xE4728F3E48E94C6DA2B53610E677cc241DAFB134",
+      "chainId": 42161,
+      "decimals": 6,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xe4728f3e48e94c6da2b53610e677cc241dafb134.png"
+    },
+    {
+      "name": "Babypie BTC",
+      "symbol": "mBTC",
+      "address": "0x2172fAD929E857dDfD7dDC31E24904438434cB0B",
+      "chainId": 42161,
+      "decimals": 8,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x2172fad929e857ddfd7ddc31e24904438434cb0b.png"
+    },
+    {
+      "name": "Gains Network USDC",
+      "symbol": "gUSDC",
+      "address": "0xd3443ee1e91aF28e5FB858Fbd0D72A63bA8046E0",
+      "chainId": 42161,
+      "decimals": 6,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0xd3443ee1e91af28e5fb858fbd0d72a63ba8046e0.png"
+    },
+    {
+      "name": "Eigenpie",
+      "symbol": "EGP",
+      "address": "0x7E7a7C916c19a45769f6BDAF91087f93c6C12F78",
+      "chainId": 42161,
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x7e7a7c916c19a45769f6bdaf91087f93c6c12f78.png"
+    }
+  ]
+}
