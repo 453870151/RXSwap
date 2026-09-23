@@ -16,7 +16,8 @@
       "symbol": "RXR",
       "address": "0x684aF1E5bA01EE7ddD4053da6ddFb6aBe4bEb3e2",
       "chainId": 42161,
-      "decimals": 18
+      "decimals": 18,
+      "logoURI": "https://app.rxexchange.io/images/tokens/42161/0x684af1e5ba01ee7ddd4053da6ddfb6abe4beb3e2.png"
     },
     {
       "name": "Wrapped Ether",
